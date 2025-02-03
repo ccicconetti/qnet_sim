@@ -13,6 +13,19 @@ pub fn to_nanoseconds(s: f64) -> u64 {
     (s * GIGA as f64).round() as u64
 }
 
+/// Compute the fidelity with an exponential decaying rate.
+///
+/// Input values are not checked for consistency.
+///
+/// Parameters:
+/// - `f_init`: initial fidelity.
+/// - `decay_rate`: the decaying rate, in inverse time units.
+/// - `time`: time after which the fidelity is computed.
+///
+pub fn fidelity(f_init: f64, decay_rate: f64, time: f64) -> f64 {
+    0.25 + (f_init - 0.25) * (-decay_rate * time).exp()
+}
+
 pub fn open_output_file(
     path: &str,
     filename: &str,
@@ -49,4 +62,24 @@ pub fn open_output_file(
         writeln!(&mut f, "{}", header)?;
     }
     Ok(f)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::utils::fidelity;
+
+    use super::{to_nanoseconds, to_seconds};
+
+    #[test]
+    fn test_to_from_nanosecs() {
+        assert_eq!(42.0, to_seconds(to_nanoseconds(42.0)));
+    }
+
+    #[test]
+    fn test_fidelity() {
+        assert_float_eq::assert_f64_near!(0.9, fidelity(0.9, 0.1, 0.0));
+        assert_float_eq::assert_f64_near!(0.4891216367614375, fidelity(0.9, 0.1, 10.0));
+        assert_float_eq::assert_f64_near!(0.41554574852714904, fidelity(0.7, 0.1, 10.0));
+        assert_float_eq::assert_f64_near!(0.25002042996839313, fidelity(0.7, 0.1, 100.0));
+    }
 }
