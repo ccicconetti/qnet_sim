@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: © 2025 Claudio Cicconetti <c.cicconetti@iit.cnr.it>
 // SPDX-License-Identifier: MIT
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 enum NodeType {
     /// Satellite node.
     SAT,
@@ -58,6 +58,44 @@ impl Default for NodeWeight {
             transmitters: 1,
             capacity: 1.0,
         }
+    }
+}
+
+impl NodeWeight {
+    fn valid(&self) -> anyhow::Result<()> {
+        let mut errors = vec![];
+        if self.memory_qubits == 0 && self.detectors > 0 {
+            errors.push(format!(
+                "vanishing memory qubits with {} detectors",
+                self.detectors
+            ))
+        }
+        if self.memory_qubits > 0 && self.detectors == 0 {
+            errors.push(format!(
+                "vanishing detectors with {} memory qubits",
+                self.memory_qubits
+            ))
+        }
+        if self.decay_rate < 0.0 {
+            errors.push(format!("decay rate ({}) < 0", self.decay_rate))
+        }
+        if self.swapping_success_prob < 0.0 || self.swapping_success_prob > 1.0 {
+            errors.push(format!(
+                "invalid swapping success probability ({})",
+                self.swapping_success_prob
+            ))
+        }
+        if self.capacity < 0.0 {
+            errors.push(format!("capacity ({}) < 0", self.capacity))
+        }
+
+        if !errors.is_empty() {
+            anyhow::bail!(
+                "invalid physical topology grid parameters: {}",
+                errors.join(",")
+            )
+        }
+        Ok(())
     }
 }
 
@@ -123,6 +161,73 @@ impl Default for StaticFidelities {
     }
 }
 
+impl StaticFidelities {
+    fn valid(&self) -> anyhow::Result<()> {
+        let fidelities = vec![
+            (self.f_o, "one-hop, orbit-to-orbit"),
+            (self.f_g, "one-hop, orbit-to-ground"),
+            (self.f_oo, "two-hops, orbit-to-orbit"),
+            (self.f_og, "two-hops, orbit-to-ground"),
+            (self.f_gg, "two-hops, ground-to-ground"),
+        ];
+        let mut errors = vec![];
+        for (fidelity, name) in fidelities {
+            if fidelity < 0.0 {
+                errors.push(format!("{} fidelity ({}) is < 0", fidelity, name));
+            } else if fidelity > 1.0 {
+                errors.push(format!("{} fidelity ({}) is > 1", fidelity, name));
+            }
+        }
+        if !errors.is_empty() {
+            anyhow::bail!("invalid static fidelities: {}", errors.join(","))
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct GridParams {
+    /// Distance between two neighbor satellites, in m.
+    pub orbit_to_orbit_distance: f64,
+    /// Distance between an OGS and a satellite, in m.
+    pub ground_to_orbit_distance: f64,
+    /// Number of orbits.
+    pub num_orbits: u32,
+    /// Number of satellites in each orbit.
+    pub orbit_length: u32,
+}
+
+impl GridParams {
+    fn valid(&self) -> anyhow::Result<()> {
+        let mut errors = vec![];
+        if self.orbit_to_orbit_distance < 0.0 {
+            errors.push(format!(
+                "orbit-to-orbit distance ({}) < 0",
+                self.orbit_to_orbit_distance
+            ))
+        }
+        if self.ground_to_orbit_distance < 0.0 {
+            errors.push(format!(
+                "ground-to-orbit distance ({}) < 0",
+                self.ground_to_orbit_distance
+            ))
+        }
+        if self.num_orbits == 0 {
+            errors.push(String::from("vanishing number of orbits"));
+        }
+        if self.orbit_length == 0 {
+            errors.push(String::from("vanishing orbit length"));
+        }
+        if !errors.is_empty() {
+            anyhow::bail!(
+                "invalid physical topology grid parameters: {}",
+                errors.join(",")
+            )
+        }
+        Ok(())
+    }
+}
+
 macro_rules! valid_node {
     ($node:expr, $graph:expr) => {
         anyhow::ensure!(
@@ -148,7 +253,7 @@ macro_rules! valid_node {
 /// if it is STA-STA or STA-OGS.
 #[derive(Debug, Default)]
 pub struct PhysicalTopology {
-    pub graph: petgraph::Graph<NodeWeight, EdgeWeight, petgraph::Undirected, u32>,
+    graph: petgraph::Graph<NodeWeight, EdgeWeight, petgraph::Undirected, u32>,
     fidelities: StaticFidelities,
     paths: std::collections::HashMap<
         petgraph::graph::NodeIndex,
@@ -157,6 +262,132 @@ pub struct PhysicalTopology {
 }
 
 impl PhysicalTopology {
+    /// Build a physical topology consisting of a grid representing a number of
+    /// parallel orbits, with inter-orbit communications. The grid wraps around
+    /// at the orbits' end.
+    ///
+    /// Exactly one station is assigned to each square of 4 satellites (if in
+    /// the middle) or pair of satellites (if at the top/bottom).
+    ///
+    /// All the satellite and ground nodes have the same given characteristics.
+    /// and static fidelities.
+    fn from_grid(
+        grid_params: GridParams,
+        node_weight: NodeWeight,
+        fidelities: StaticFidelities,
+    ) -> anyhow::Result<Self> {
+        grid_params.valid()?;
+        node_weight.valid()?;
+        fidelities.valid()?;
+
+        let mut graph = petgraph::Graph::new_undirected();
+
+        // Add SAT nodes.
+        let num_sat = grid_params.orbit_length * grid_params.num_orbits;
+        for _ in 0..num_sat {
+            let mut node_weight = node_weight.clone();
+            node_weight.node_type = NodeType::SAT;
+            graph.add_node(node_weight);
+        }
+
+        // Add OGS nodes.
+        let num_ogs = grid_params.orbit_length * (1 + grid_params.num_orbits);
+        for _ in 0..num_ogs {
+            let mut node_weight = node_weight.clone();
+            node_weight.node_type = NodeType::OGS;
+            graph.add_node(node_weight);
+        }
+
+        // Add orbit-to-orbit edges.
+        let orbit_weight = EdgeWeight {
+            distance: grid_params.orbit_to_orbit_distance,
+        };
+        for i in 0..grid_params.num_orbits {
+            for j in 0..grid_params.orbit_length {
+                let ndx = j + i * grid_params.orbit_length;
+                assert!(ndx < num_sat);
+                let mut others = std::collections::HashSet::new();
+                // Right
+                others.insert(i * grid_params.orbit_length + (j + 1) % grid_params.orbit_length);
+                // Left
+                others.insert(
+                    i * grid_params.orbit_length
+                        + (grid_params.orbit_length + j - 1) % grid_params.orbit_length,
+                );
+                // Up
+                if i != 0 {
+                    others.insert(ndx - grid_params.orbit_length);
+                }
+                // Down
+                if i != (grid_params.num_orbits - 1) {
+                    others.insert(ndx + grid_params.orbit_length);
+                }
+                for other_ndx in others {
+                    assert!(other_ndx < num_sat);
+                    graph.add_edge(ndx.into(), other_ndx.into(), orbit_weight.clone());
+                }
+            }
+        }
+
+        // Add ground-to-orbit edges.
+        let ground_weight = EdgeWeight {
+            distance: grid_params.ground_to_orbit_distance,
+        };
+        for i in 0..=grid_params.num_orbits {
+            for j in 0..grid_params.orbit_length {
+                let ndx = num_sat + j + i * grid_params.orbit_length;
+                assert!(ndx < num_sat + num_ogs);
+                let mut sats = std::collections::HashSet::new();
+                // Up
+                if i != 0 {
+                    sats.insert((i - 1) * grid_params.orbit_length + j);
+                    sats.insert(
+                        (i - 1) * grid_params.orbit_length
+                            + (grid_params.orbit_length + j - 1) % grid_params.orbit_length,
+                    );
+                }
+                // Down
+                if i != grid_params.num_orbits {
+                    sats.insert(i * grid_params.orbit_length + j);
+                    sats.insert(
+                        i * grid_params.orbit_length
+                            + (grid_params.orbit_length + j - 1) % grid_params.orbit_length,
+                    );
+                }
+                for sat_ndx in sats {
+                    assert!(sat_ndx < num_sat);
+                    graph.add_edge(ndx.into(), sat_ndx.into(), ground_weight.clone());
+                }
+            }
+        }
+
+        Ok(Self {
+            graph,
+            fidelities,
+            paths: std::collections::HashMap::new(),
+        })
+    }
+
+    /// Return the indices of the in-orbit satelites.
+    pub fn sat_indices(&self) -> Vec<u32> {
+        self.node_indices(NodeType::SAT)
+    }
+
+    /// Return the indices of the on-ground stations.
+    pub fn ogs_indices(&self) -> Vec<u32> {
+        self.node_indices(NodeType::OGS)
+    }
+
+    fn node_indices(&self, node_type: NodeType) -> Vec<u32> {
+        let mut ret = vec![];
+        for (ndx, w) in self.graph.node_weights().enumerate() {
+            if w.node_type == node_type {
+                ret.push(ndx as u32);
+            }
+        }
+        ret
+    }
+
     /// Return the distance from node u to node v, in m.
     /// The paths are computed in a lazy manner.
     fn distance(
@@ -295,6 +526,8 @@ impl PhysicalTopology {
 
 #[cfg(test)]
 mod tests {
+    use crate::physical_topology::{GridParams, NodeWeight};
+
     use super::{NodeType, PhysicalTopology, StaticFidelities};
 
     fn test_graph() -> PhysicalTopology {
@@ -350,7 +583,134 @@ mod tests {
 
     #[test]
     fn test_physical_topology_dot() {
-        let graph: PhysicalTopology = test_graph();
+        let graph = test_graph();
+        println!("{}", graph.to_dot());
+    }
+
+    #[test]
+    fn test_physical_topology_from_grid() {
+        // Invalid params
+        assert!(PhysicalTopology::from_grid(
+            GridParams {
+                orbit_to_orbit_distance: 3000.0,
+                ground_to_orbit_distance: 1000.0,
+                num_orbits: 0,
+                orbit_length: 1,
+            },
+            NodeWeight::default(),
+            StaticFidelities::default(),
+        )
+        .is_err());
+        assert!(PhysicalTopology::from_grid(
+            GridParams {
+                orbit_to_orbit_distance: 3000.0,
+                ground_to_orbit_distance: 1000.0,
+                num_orbits: 1,
+                orbit_length: 0,
+            },
+            NodeWeight::default(),
+            StaticFidelities::default(),
+        )
+        .is_err());
+        assert!(PhysicalTopology::from_grid(
+            GridParams {
+                orbit_to_orbit_distance: -1.0,
+                ground_to_orbit_distance: 1000.0,
+                num_orbits: 1,
+                orbit_length: 1,
+            },
+            NodeWeight::default(),
+            StaticFidelities::default(),
+        )
+        .is_err());
+        assert!(PhysicalTopology::from_grid(
+            GridParams {
+                orbit_to_orbit_distance: 1000.0,
+                ground_to_orbit_distance: -1.0,
+                num_orbits: 1,
+                orbit_length: 1,
+            },
+            NodeWeight::default(),
+            StaticFidelities::default(),
+        )
+        .is_err());
+
+        // Valid 1x1 grid
+        let graph = PhysicalTopology::from_grid(
+            GridParams {
+                orbit_to_orbit_distance: 1000.0,
+                ground_to_orbit_distance: 1000.0,
+                num_orbits: 1,
+                orbit_length: 1,
+            },
+            NodeWeight::default(),
+            StaticFidelities::default(),
+        )
+        .unwrap();
+        assert_eq!((0..1).collect::<Vec<u32>>(), graph.sat_indices());
+        assert_eq!((1..3).collect::<Vec<u32>>(), graph.ogs_indices());
+
+        // Valid 1x2 grid
+        let graph = PhysicalTopology::from_grid(
+            GridParams {
+                orbit_to_orbit_distance: 1000.0,
+                ground_to_orbit_distance: 1000.0,
+                num_orbits: 1,
+                orbit_length: 2,
+            },
+            NodeWeight::default(),
+            StaticFidelities::default(),
+        )
+        .unwrap();
+        assert_eq!((0..2).collect::<Vec<u32>>(), graph.sat_indices());
+        assert_eq!((2..6).collect::<Vec<u32>>(), graph.ogs_indices());
+
+        // Valid 2x1 grid
+        let graph = PhysicalTopology::from_grid(
+            GridParams {
+                orbit_to_orbit_distance: 1000.0,
+                ground_to_orbit_distance: 1000.0,
+                num_orbits: 2,
+                orbit_length: 1,
+            },
+            NodeWeight::default(),
+            StaticFidelities::default(),
+        )
+        .unwrap();
+        assert_eq!((0..2).collect::<Vec<u32>>(), graph.sat_indices());
+        assert_eq!((2..5).collect::<Vec<u32>>(), graph.ogs_indices());
+
+        // Valid 2x2 grid
+        let graph = PhysicalTopology::from_grid(
+            GridParams {
+                orbit_to_orbit_distance: 1000.0,
+                ground_to_orbit_distance: 1000.0,
+                num_orbits: 2,
+                orbit_length: 2,
+            },
+            NodeWeight::default(),
+            StaticFidelities::default(),
+        )
+        .unwrap();
+        assert_eq!((0..4).collect::<Vec<u32>>(), graph.sat_indices());
+        assert_eq!((4..10).collect::<Vec<u32>>(), graph.ogs_indices());
+
+        // Valid 4x3 grid
+        let graph = PhysicalTopology::from_grid(
+            GridParams {
+                orbit_to_orbit_distance: 3000.0,
+                ground_to_orbit_distance: 1000.0,
+                num_orbits: 3,
+                orbit_length: 4,
+            },
+            NodeWeight::default(),
+            StaticFidelities::default(),
+        )
+        .unwrap();
+
+        assert_eq!((0..12).collect::<Vec<u32>>(), graph.sat_indices());
+        assert_eq!((12..28).collect::<Vec<u32>>(), graph.ogs_indices());
+
         println!("{}", graph.to_dot());
     }
 
