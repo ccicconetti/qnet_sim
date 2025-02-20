@@ -23,7 +23,8 @@ impl Simulation {
             crate::user_config::PhysicalTopology::ConfGridStatic(conf) => {
                 crate::physical_topology::PhysicalTopology::from_grid_static(
                     conf.grid_params.clone(),
-                    conf.node_weight.clone(),
+                    conf.sat_weight.clone(),
+                    conf.ogs_weight.clone(),
                     conf.fidelities.clone(),
                 )?
             }

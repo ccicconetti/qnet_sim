@@ -4,6 +4,7 @@
 pub mod config;
 pub mod event;
 pub mod event_queue;
+pub mod logical_topology;
 pub mod output;
 pub mod physical_topology;
 pub mod simulation;

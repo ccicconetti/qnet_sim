@@ -25,20 +25,20 @@ impl std::fmt::Display for NodeType {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct NodeWeight {
     /// Node type.
-    node_type: NodeType,
+    pub node_type: NodeType,
     /// Number of memory qubits.
-    memory_qubits: u32,
+    pub memory_qubits: u32,
     /// Fidelity decay rate of a qubit in memory.
-    decay_rate: f64,
+    pub decay_rate: f64,
     /// Entanglement swapping success probability.
-    swapping_success_prob: f64,
+    pub swapping_success_prob: f64,
     /// Number of detectors.
-    detectors: u32,
+    pub detectors: u32,
     /// Number of transmitters, i.e., entangled photon source generators.
-    transmitters: u32,
+    pub transmitters: u32,
     /// Capacity of transmitters, i.e., rate at which they generate
     /// EPR pairs.
-    capacity: f64,
+    pub capacity: f64,
 }
 
 impl std::fmt::Display for NodeWeight {
@@ -49,6 +49,12 @@ impl std::fmt::Display for NodeWeight {
 
 impl Default for NodeWeight {
     fn default() -> Self {
+        NodeWeight::default_sat()
+    }
+}
+
+impl NodeWeight {
+    pub fn default_sat() -> Self {
         Self {
             node_type: NodeType::SAT,
             memory_qubits: 1,
@@ -59,9 +65,19 @@ impl Default for NodeWeight {
             capacity: 1.0,
         }
     }
-}
 
-impl NodeWeight {
+    pub fn default_ogs() -> Self {
+        Self {
+            node_type: NodeType::OGS,
+            memory_qubits: 1,
+            decay_rate: 0.0,
+            swapping_success_prob: 1.0,
+            detectors: 1,
+            transmitters: 0,
+            capacity: 0.0,
+        }
+    }
+
     fn valid(&self) -> anyhow::Result<()> {
         let mut errors = vec![];
         if self.memory_qubits == 0 && self.detectors > 0 {
@@ -242,17 +258,19 @@ impl GridParams {
 macro_rules! valid_node {
     ($node:expr, $graph:expr) => {
         anyhow::ensure!(
-            $node.index() < $graph.node_count(),
+            ($node as usize) < $graph.node_count(),
             "there's no node {:?} in the graph",
             $node
         );
         anyhow::ensure!(
-            $graph.node_weight($node).is_some(),
+            $graph.node_weight($node.into()).is_some(),
             "there's no node weight associated with {:?} in the graph",
             $node
         );
     };
 }
+
+type Graph = petgraph::Graph<NodeWeight, EdgeWeight, petgraph::Undirected, u32>;
 
 /// Undirected graph representing the physical topology of the network.
 ///
@@ -264,15 +282,19 @@ macro_rules! valid_node {
 /// if it is STA-STA or STA-OGS.
 #[derive(Debug, Default)]
 pub struct PhysicalTopology {
-    graph: petgraph::Graph<NodeWeight, EdgeWeight, petgraph::Undirected, u32>,
+    graph: Graph,
     fidelities: StaticFidelities,
     paths: std::collections::HashMap<
-        petgraph::graph::NodeIndex,
+        u32,
         petgraph::algo::bellman_ford::Paths<petgraph::graph::NodeIndex, EdgeWeight>,
     >,
 }
 
 impl PhysicalTopology {
+    pub fn graph(&self) -> &Graph {
+        &self.graph
+    }
+
     /// Build a physical topology consisting of a grid representing a number of
     /// parallel orbits, with inter-orbit communications. The grid wraps around
     /// at the orbits' end.
@@ -284,11 +306,15 @@ impl PhysicalTopology {
     /// and static fidelities.
     pub fn from_grid_static(
         grid_params: GridParams,
-        node_weight: NodeWeight,
+        sat_weight: NodeWeight,
+        ogs_weight: NodeWeight,
         fidelities: StaticFidelities,
     ) -> anyhow::Result<Self> {
         grid_params.valid()?;
-        node_weight.valid()?;
+        sat_weight.valid()?;
+        assert!(sat_weight.node_type == NodeType::SAT);
+        ogs_weight.valid()?;
+        assert!(ogs_weight.node_type == NodeType::OGS);
         fidelities.valid()?;
 
         let mut graph = petgraph::Graph::new_undirected();
@@ -296,17 +322,13 @@ impl PhysicalTopology {
         // Add SAT nodes.
         let num_sat = grid_params.orbit_length * grid_params.num_orbits;
         for _ in 0..num_sat {
-            let mut node_weight = node_weight.clone();
-            node_weight.node_type = NodeType::SAT;
-            graph.add_node(node_weight);
+            graph.add_node(sat_weight.clone());
         }
 
         // Add OGS nodes.
         let num_ogs = grid_params.orbit_length * (1 + grid_params.num_orbits);
         for _ in 0..num_ogs {
-            let mut node_weight = node_weight.clone();
-            node_weight.node_type = NodeType::OGS;
-            graph.add_node(node_weight);
+            graph.add_node(ogs_weight.clone());
         }
 
         // Add orbit-to-orbit edges.
@@ -335,7 +357,10 @@ impl PhysicalTopology {
                 }
                 for other_ndx in others {
                     assert!(other_ndx < num_sat);
-                    graph.add_edge(ndx.into(), other_ndx.into(), orbit_weight.clone());
+                    println!("{} {}", ndx, other_ndx);
+                    if !graph.contains_edge(other_ndx.into(), ndx.into()) {
+                        graph.add_edge(ndx.into(), other_ndx.into(), orbit_weight.clone());
+                    }
                 }
             }
         }
@@ -367,7 +392,9 @@ impl PhysicalTopology {
                 }
                 for sat_ndx in sats {
                     assert!(sat_ndx < num_sat);
-                    graph.add_edge(ndx.into(), sat_ndx.into(), ground_weight.clone());
+                    if !graph.contains_edge(sat_ndx.into(), ndx.into()) {
+                        graph.add_edge(ndx.into(), sat_ndx.into(), ground_weight.clone());
+                    }
                 }
             }
         }
@@ -401,16 +428,12 @@ impl PhysicalTopology {
 
     /// Return the distance from node u to node v, in m.
     /// The paths are computed in a lazy manner.
-    fn distance(
-        &mut self,
-        u: petgraph::graph::NodeIndex,
-        v: petgraph::graph::NodeIndex,
-    ) -> anyhow::Result<f64> {
+    fn distance(&mut self, u: u32, v: u32) -> anyhow::Result<f64> {
         valid_node!(u, self.graph);
         valid_node!(v, self.graph);
         if let Some(paths) = self.paths.get(&u) {
-            if let Some(_pred) = paths.predecessors[v.index()] {
-                Ok(paths.distances[v.index()].distance)
+            if let Some(_pred) = paths.predecessors[v as usize] {
+                Ok(paths.distances[v as usize].distance)
             } else {
                 anyhow::bail!("no connection between {:?} and {:?}", u, v);
             }
@@ -438,12 +461,12 @@ impl PhysicalTopology {
     /// - `u`: one of the nodes that receives one photon of the EPR pairs
     /// - `v`: the other one
     fn fidelity(&mut self, tx: u32, u: u32, v: u32) -> anyhow::Result<f64> {
-        let tx = petgraph::graph::NodeIndex::from(tx);
-        let u = petgraph::graph::NodeIndex::from(u);
-        let v = petgraph::graph::NodeIndex::from(v);
         valid_node!(tx, self.graph);
         valid_node!(u, self.graph);
         valid_node!(v, self.graph);
+        let tx = petgraph::graph::NodeIndex::from(tx);
+        let u = petgraph::graph::NodeIndex::from(u);
+        let v = petgraph::graph::NodeIndex::from(v);
         anyhow::ensure!(
             self.graph.node_weight(tx).unwrap().transmitters > 0,
             "there are no transmitters on board of {}",
@@ -579,15 +602,15 @@ mod tests {
     fn test_physical_topology_distance() -> anyhow::Result<()> {
         let mut graph = test_graph();
 
-        assert_float_eq::assert_f64_near!(graph.distance(0.into(), 1.into()).unwrap(), 100.0);
-        assert_float_eq::assert_f64_near!(graph.distance(0.into(), 2.into()).unwrap(), 200.0);
-        assert_float_eq::assert_f64_near!(graph.distance(0.into(), 5.into()).unwrap(), 300.0);
-        assert_float_eq::assert_f64_near!(graph.distance(1.into(), 3.into()).unwrap(), 150.0);
-        assert_float_eq::assert_f64_near!(graph.distance(3.into(), 1.into()).unwrap(), 150.0);
+        assert_float_eq::assert_f64_near!(graph.distance(0, 1).unwrap(), 100.0);
+        assert_float_eq::assert_f64_near!(graph.distance(0, 2).unwrap(), 200.0);
+        assert_float_eq::assert_f64_near!(graph.distance(0, 5).unwrap(), 300.0);
+        assert_float_eq::assert_f64_near!(graph.distance(1, 3).unwrap(), 150.0);
+        assert_float_eq::assert_f64_near!(graph.distance(3, 1).unwrap(), 150.0);
 
-        assert!(graph.distance(0.into(), 99.into()).is_err());
-        assert!(graph.distance(99.into(), 0.into()).is_err());
-        assert!(graph.distance(99.into(), 99.into()).is_err());
+        assert!(graph.distance(0, 99).is_err());
+        assert!(graph.distance(99, 0).is_err());
+        assert!(graph.distance(99, 99).is_err());
 
         Ok(())
     }
@@ -608,7 +631,8 @@ mod tests {
                 num_orbits: 0,
                 orbit_length: 1,
             },
-            NodeWeight::default(),
+            NodeWeight::default_sat(),
+            NodeWeight::default_ogs(),
             StaticFidelities::default(),
         )
         .is_err());
@@ -619,7 +643,8 @@ mod tests {
                 num_orbits: 1,
                 orbit_length: 0,
             },
-            NodeWeight::default(),
+            NodeWeight::default_sat(),
+            NodeWeight::default_ogs(),
             StaticFidelities::default(),
         )
         .is_err());
@@ -630,7 +655,8 @@ mod tests {
                 num_orbits: 1,
                 orbit_length: 1,
             },
-            NodeWeight::default(),
+            NodeWeight::default_sat(),
+            NodeWeight::default_ogs(),
             StaticFidelities::default(),
         )
         .is_err());
@@ -641,7 +667,8 @@ mod tests {
                 num_orbits: 1,
                 orbit_length: 1,
             },
-            NodeWeight::default(),
+            NodeWeight::default_sat(),
+            NodeWeight::default_ogs(),
             StaticFidelities::default(),
         )
         .is_err());
@@ -654,7 +681,8 @@ mod tests {
                 num_orbits: 1,
                 orbit_length: 1,
             },
-            NodeWeight::default(),
+            NodeWeight::default_sat(),
+            NodeWeight::default_ogs(),
             StaticFidelities::default(),
         )
         .unwrap();
@@ -669,7 +697,8 @@ mod tests {
                 num_orbits: 1,
                 orbit_length: 2,
             },
-            NodeWeight::default(),
+            NodeWeight::default_sat(),
+            NodeWeight::default_ogs(),
             StaticFidelities::default(),
         )
         .unwrap();
@@ -684,7 +713,8 @@ mod tests {
                 num_orbits: 2,
                 orbit_length: 1,
             },
-            NodeWeight::default(),
+            NodeWeight::default_sat(),
+            NodeWeight::default_ogs(),
             StaticFidelities::default(),
         )
         .unwrap();
@@ -699,7 +729,8 @@ mod tests {
                 num_orbits: 2,
                 orbit_length: 2,
             },
-            NodeWeight::default(),
+            NodeWeight::default_sat(),
+            NodeWeight::default_ogs(),
             StaticFidelities::default(),
         )
         .unwrap();
@@ -707,22 +738,29 @@ mod tests {
         assert_eq!((4..10).collect::<Vec<u32>>(), graph.ogs_indices());
 
         // Valid 4x3 grid
-        let graph = PhysicalTopology::from_grid_static(
+        let mut graph = PhysicalTopology::from_grid_static(
             GridParams {
                 orbit_to_orbit_distance: 3000.0,
                 ground_to_orbit_distance: 1000.0,
                 num_orbits: 3,
                 orbit_length: 4,
             },
-            NodeWeight::default(),
+            NodeWeight::default_sat(),
+            NodeWeight::default_ogs(),
             StaticFidelities::default(),
         )
         .unwrap();
 
         assert_eq!((0..12).collect::<Vec<u32>>(), graph.sat_indices());
         assert_eq!((12..28).collect::<Vec<u32>>(), graph.ogs_indices());
-
+        assert_eq!(28, graph.graph().node_count());
         println!("{}", graph.to_dot());
+        assert_float_eq::assert_f64_near!(2000.0, graph.distance(0, 1).unwrap());
+        assert_float_eq::assert_f64_near!(4000.0, graph.distance(0, 2).unwrap());
+        assert_float_eq::assert_f64_near!(2000.0, graph.distance(0, 3).unwrap());
+        assert_float_eq::assert_f64_near!(2000.0, graph.distance(0, 4).unwrap());
+        assert_float_eq::assert_f64_near!(4000.0, graph.distance(0, 11).unwrap());
+        assert_float_eq::assert_f64_near!(6000.0, graph.distance(12, 26).unwrap());
     }
 
     #[test]

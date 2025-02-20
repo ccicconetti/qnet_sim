@@ -1,11 +1,23 @@
 // SPDX-FileCopyrightText: © 2025 Claudio Cicconetti <c.cicconetti@iit.cnr.it>
 // SPDX-License-Identifier: MIT
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ConfGridStatic {
     pub grid_params: crate::physical_topology::GridParams,
-    pub node_weight: crate::physical_topology::NodeWeight,
+    pub sat_weight: crate::physical_topology::NodeWeight,
+    pub ogs_weight: crate::physical_topology::NodeWeight,
     pub fidelities: crate::physical_topology::StaticFidelities,
+}
+
+impl Default for ConfGridStatic {
+    fn default() -> Self {
+        Self {
+            grid_params: Default::default(),
+            sat_weight: crate::physical_topology::NodeWeight::default_sat(),
+            ogs_weight: crate::physical_topology::NodeWeight::default_ogs(),
+            fidelities: Default::default(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -18,9 +30,10 @@ impl crate::utils::CsvFriend for PhysicalTopology {
         match &self {
             PhysicalTopology::ConfGridStatic(conf) => {
                 format!(
-                    "{},{},{}",
+                    "{},{},{},{}",
                     crate::utils::struct_to_csv_header(&conf.grid_params).unwrap(),
-                    crate::utils::struct_to_csv_header(&conf.node_weight).unwrap(),
+                    crate::utils::struct_to_csv_header(&conf.sat_weight).unwrap(),
+                    crate::utils::struct_to_csv_header(&conf.ogs_weight).unwrap(),
                     crate::utils::struct_to_csv_header(&conf.fidelities).unwrap()
                 )
             }
@@ -31,9 +44,10 @@ impl crate::utils::CsvFriend for PhysicalTopology {
         match &self {
             PhysicalTopology::ConfGridStatic(conf) => {
                 format!(
-                    "{},{},{}",
+                    "{},{},{},{}",
                     crate::utils::struct_to_csv(&conf.grid_params).unwrap(),
-                    crate::utils::struct_to_csv(&conf.node_weight).unwrap(),
+                    crate::utils::struct_to_csv(&conf.sat_weight).unwrap(),
+                    crate::utils::struct_to_csv(&conf.ogs_weight).unwrap(),
                     crate::utils::struct_to_csv(&conf.fidelities).unwrap()
                 )
             }
