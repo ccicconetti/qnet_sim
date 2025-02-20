@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use crate::user_config::UserConfig;
+use crate::utils::CsvFriend;
 
 #[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Config {
@@ -11,11 +12,11 @@ pub struct Config {
     pub user_config: UserConfig,
 }
 
-impl Config {
-    pub fn header() -> String {
-        format!("seed{}", UserConfig::header())
+impl CsvFriend for Config {
+    fn header(&self) -> String {
+        format!("seed,{}", self.user_config.header())
     }
-    pub fn to_csv(&self) -> String {
+    fn to_csv(&self) -> String {
         format!("{},{}", self.seed, self.user_config.to_csv())
     }
 }

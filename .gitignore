@@ -21,3 +21,6 @@ Cargo.lock
 #.idea/
 
 conf.json
+*.dot
+*.pdf
+*.csv

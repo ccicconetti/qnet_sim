@@ -3,7 +3,14 @@
 
 use std::io::Write;
 
+use serde::Serialize;
+
 static GIGA: u64 = 1000000000;
+
+pub trait CsvFriend {
+    fn header(&self) -> String;
+    fn to_csv(&self) -> String;
+}
 
 pub fn to_seconds(ns: u64) -> f64 {
     ns as f64 / GIGA as f64
@@ -36,7 +43,7 @@ pub fn open_output_file(
 
     if let Some(parent_path) = std::path::Path::new(&full_path).parent() {
         if parent_path.exists() {
-            if parent_path.is_dir() {
+            if !parent_path.is_dir() {
                 anyhow::bail!(
                     "parent exists but is not a directory: {}",
                     parent_path.to_string_lossy()
@@ -62,6 +69,32 @@ pub fn open_output_file(
         writeln!(&mut f, "{}", header)?;
     }
     Ok(f)
+}
+
+pub fn struct_to_csv<T: Serialize>(s: T) -> anyhow::Result<String> {
+    let fields = struct_to_map(s)?;
+    let mut ret = vec![];
+    for (_name, value) in fields {
+        ret.push(format!("{}", value));
+    }
+    Ok(ret.join(","))
+}
+
+pub fn struct_to_csv_header<T: Serialize>(s: T) -> anyhow::Result<String> {
+    let fields = struct_to_map(s)?;
+    let mut ret = vec![];
+    for (name, _value) in fields {
+        ret.push(format!("{}", name));
+    }
+    Ok(ret.join(","))
+}
+
+fn struct_to_map<T: Serialize>(s: T) -> anyhow::Result<serde_json::Map<String, serde_json::Value>> {
+    let mut value = serde_json::to_value(s)?;
+    anyhow::ensure!(value.is_object(), "invalid struct");
+    let fields = value.as_object_mut().unwrap();
+    fields.sort_keys();
+    Ok(fields.clone())
 }
 
 #[cfg(test)]

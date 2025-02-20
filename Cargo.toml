@@ -31,6 +31,6 @@ petgraph = "0.7.1"
 rand = "0.8.5"
 rand_distr = "0.4.3"
 serde = "1.0"
-serde_json = "1.0"
+serde_json = { version = "1.0", features = ["preserve_order"] }
 tokio = { version = "1", features = ["full"] }
 weighted_rand = "0.4.2"

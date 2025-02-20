@@ -3,6 +3,8 @@
 
 use std::io::Write;
 
+use crate::utils::CsvFriend;
+
 struct TimeAvg {
     last_update: u64,
     last_value: f64,
@@ -61,37 +63,6 @@ impl OutputSingle {
         entry.last_value = value;
     }
 
-    pub fn header(&self) -> String {
-        format!(
-            "{},{}",
-            self.one_time
-                .keys()
-                .cloned()
-                .collect::<Vec<String>>()
-                .join(","),
-            self.time_avg
-                .keys()
-                .cloned()
-                .collect::<Vec<String>>()
-                .join(",")
-        )
-    }
-    pub fn to_csv(&self) -> String {
-        format!(
-            "{},{}",
-            self.one_time
-                .values()
-                .map(|x| x.to_string())
-                .collect::<Vec<String>>()
-                .join(","),
-            self.time_avg
-                .values()
-                .map(|x| x.avg().to_string())
-                .collect::<Vec<String>>()
-                .join(",")
-        )
-    }
-
     pub fn enable(&mut self, now: u64) {
         self.enabled = true;
         self.warmup = now;
@@ -107,6 +78,39 @@ impl OutputSingle {
             entry.sum_time += delta;
             entry.last_update = now;
         }
+    }
+}
+
+impl CsvFriend for OutputSingle {
+    fn header(&self) -> String {
+        format!(
+            "{},{}",
+            self.one_time
+                .keys()
+                .cloned()
+                .collect::<Vec<String>>()
+                .join(","),
+            self.time_avg
+                .keys()
+                .cloned()
+                .collect::<Vec<String>>()
+                .join(",")
+        )
+    }
+    fn to_csv(&self) -> String {
+        format!(
+            "{},{}",
+            self.one_time
+                .values()
+                .map(|x| x.to_string())
+                .collect::<Vec<String>>()
+                .join(","),
+            self.time_avg
+                .values()
+                .map(|x| x.avg().to_string())
+                .collect::<Vec<String>>()
+                .join(",")
+        )
     }
 }
 
@@ -194,6 +198,7 @@ pub fn save_outputs(
     outputs: Vec<Output>,
     output_path: &str,
     append: bool,
+    config_csv_header: &str,
     additional_header: &str,
     additional_fields: &str,
 ) -> anyhow::Result<()> {
@@ -204,7 +209,7 @@ pub fn save_outputs(
         format!(
             "{}{},{}",
             additional_header,
-            crate::config::Config::header(),
+            config_csv_header,
             outputs.first().unwrap().single.header()
         )
         .as_str(),
@@ -226,9 +231,7 @@ pub fn save_outputs(
                 append,
                 format!(
                     "{}{},{},value",
-                    additional_header,
-                    crate::config::Config::header(),
-                    elem.header
+                    additional_header, &config_csv_header, elem.header
                 )
                 .as_str(),
             )?;

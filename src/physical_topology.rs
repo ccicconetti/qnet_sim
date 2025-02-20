@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: © 2025 Claudio Cicconetti <c.cicconetti@iit.cnr.it>
 // SPDX-License-Identifier: MIT
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 enum NodeType {
     /// Satellite node.
     SAT,
@@ -22,7 +22,7 @@ impl std::fmt::Display for NodeType {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct NodeWeight {
     /// Node type.
     node_type: NodeType,
@@ -135,7 +135,7 @@ impl std::ops::Add for EdgeWeight {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct StaticFidelities {
     /// One hop, orbit-to-orbit.
     pub f_o: f64,
@@ -185,7 +185,7 @@ impl StaticFidelities {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct GridParams {
     /// Distance between two neighbor satellites, in m.
     pub orbit_to_orbit_distance: f64,
@@ -195,6 +195,17 @@ pub struct GridParams {
     pub num_orbits: u32,
     /// Number of satellites in each orbit.
     pub orbit_length: u32,
+}
+
+impl Default for GridParams {
+    fn default() -> Self {
+        Self {
+            orbit_to_orbit_distance: 3000.0,
+            ground_to_orbit_distance: 1000.0,
+            num_orbits: 3,
+            orbit_length: 4,
+        }
+    }
 }
 
 impl GridParams {
@@ -271,7 +282,7 @@ impl PhysicalTopology {
     ///
     /// All the satellite and ground nodes have the same given characteristics.
     /// and static fidelities.
-    fn from_grid(
+    pub fn from_grid_static(
         grid_params: GridParams,
         node_weight: NodeWeight,
         fidelities: StaticFidelities,
@@ -590,7 +601,7 @@ mod tests {
     #[test]
     fn test_physical_topology_from_grid() {
         // Invalid params
-        assert!(PhysicalTopology::from_grid(
+        assert!(PhysicalTopology::from_grid_static(
             GridParams {
                 orbit_to_orbit_distance: 3000.0,
                 ground_to_orbit_distance: 1000.0,
@@ -601,7 +612,7 @@ mod tests {
             StaticFidelities::default(),
         )
         .is_err());
-        assert!(PhysicalTopology::from_grid(
+        assert!(PhysicalTopology::from_grid_static(
             GridParams {
                 orbit_to_orbit_distance: 3000.0,
                 ground_to_orbit_distance: 1000.0,
@@ -612,7 +623,7 @@ mod tests {
             StaticFidelities::default(),
         )
         .is_err());
-        assert!(PhysicalTopology::from_grid(
+        assert!(PhysicalTopology::from_grid_static(
             GridParams {
                 orbit_to_orbit_distance: -1.0,
                 ground_to_orbit_distance: 1000.0,
@@ -623,7 +634,7 @@ mod tests {
             StaticFidelities::default(),
         )
         .is_err());
-        assert!(PhysicalTopology::from_grid(
+        assert!(PhysicalTopology::from_grid_static(
             GridParams {
                 orbit_to_orbit_distance: 1000.0,
                 ground_to_orbit_distance: -1.0,
@@ -636,7 +647,7 @@ mod tests {
         .is_err());
 
         // Valid 1x1 grid
-        let graph = PhysicalTopology::from_grid(
+        let graph = PhysicalTopology::from_grid_static(
             GridParams {
                 orbit_to_orbit_distance: 1000.0,
                 ground_to_orbit_distance: 1000.0,
@@ -651,7 +662,7 @@ mod tests {
         assert_eq!((1..3).collect::<Vec<u32>>(), graph.ogs_indices());
 
         // Valid 1x2 grid
-        let graph = PhysicalTopology::from_grid(
+        let graph = PhysicalTopology::from_grid_static(
             GridParams {
                 orbit_to_orbit_distance: 1000.0,
                 ground_to_orbit_distance: 1000.0,
@@ -666,7 +677,7 @@ mod tests {
         assert_eq!((2..6).collect::<Vec<u32>>(), graph.ogs_indices());
 
         // Valid 2x1 grid
-        let graph = PhysicalTopology::from_grid(
+        let graph = PhysicalTopology::from_grid_static(
             GridParams {
                 orbit_to_orbit_distance: 1000.0,
                 ground_to_orbit_distance: 1000.0,
@@ -681,7 +692,7 @@ mod tests {
         assert_eq!((2..5).collect::<Vec<u32>>(), graph.ogs_indices());
 
         // Valid 2x2 grid
-        let graph = PhysicalTopology::from_grid(
+        let graph = PhysicalTopology::from_grid_static(
             GridParams {
                 orbit_to_orbit_distance: 1000.0,
                 ground_to_orbit_distance: 1000.0,
@@ -696,7 +707,7 @@ mod tests {
         assert_eq!((4..10).collect::<Vec<u32>>(), graph.ogs_indices());
 
         // Valid 4x3 grid
-        let graph = PhysicalTopology::from_grid(
+        let graph = PhysicalTopology::from_grid_static(
             GridParams {
                 orbit_to_orbit_distance: 3000.0,
                 ground_to_orbit_distance: 1000.0,

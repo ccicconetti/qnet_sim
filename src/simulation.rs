@@ -1,25 +1,38 @@
 // SPDX-FileCopyrightText: © 2025 Claudio Cicconetti <c.cicconetti@iit.cnr.it>
 // SPDX-License-Identifier: MIT
 
-use crate::config::Config;
 use crate::event::Event;
-use crate::event_queue::EventQueue;
+use crate::utils::CsvFriend;
 // use rand::seq::SliceRandom;
 // use rand::SeedableRng;
 // use rand_distr::Distribution;
 
 pub struct Simulation {
     // internal data structures
+    physical_topology: crate::physical_topology::PhysicalTopology,
 
     // configuration
-    config: Config,
+    config: crate::config::Config,
 }
 
 impl Simulation {
-    pub fn new(config: Config) -> anyhow::Result<Self> {
+    pub fn new(config: crate::config::Config) -> anyhow::Result<Self> {
         anyhow::ensure!(config.user_config.duration > 0.0, "vanishing duration");
 
-        Ok(Self { config })
+        let physical_topology = match &config.user_config.physical_topology {
+            crate::user_config::PhysicalTopology::ConfGridStatic(conf) => {
+                crate::physical_topology::PhysicalTopology::from_grid_static(
+                    conf.grid_params.clone(),
+                    conf.node_weight.clone(),
+                    conf.fidelities.clone(),
+                )?
+            }
+        };
+
+        Ok(Self {
+            physical_topology,
+            config,
+        })
     }
 
     /// Run a simulation.
@@ -31,7 +44,7 @@ impl Simulation {
         let mut series = crate::output::OutputSeries::new();
 
         // create the event queue and push initial events
-        let mut events = EventQueue::default();
+        let mut events = crate::event_queue::EventQueue::default();
         events.push(Event::WarmupPeriodEnd(crate::utils::to_nanoseconds(
             conf.warmup_period,
         )));

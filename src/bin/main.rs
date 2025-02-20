@@ -5,6 +5,7 @@ use clap::Parser;
 use qnet_ll_sim::config::Config;
 use qnet_ll_sim::simulation::Simulation;
 use qnet_ll_sim::user_config::UserConfig;
+use qnet_ll_sim::utils::CsvFriend;
 
 #[derive(Debug, clap::Parser)]
 #[command(long_about = None)]
@@ -76,16 +77,28 @@ async fn main() -> anyhow::Result<()> {
 
     // Create the configurations of all the experiments
     let configurations = std::sync::Arc::new(std::sync::Mutex::new(vec![]));
+    let mut config_csv_header = None;
     for seed in args.seed_init..args.seed_end {
-        configurations.lock().unwrap().push(Config {
+        let config = Config {
             seed,
             user_config: user_config.clone(),
-        });
+        };
+        if let Some(first_config_csv_header) = &config_csv_header {
+            anyhow::ensure!(
+                *first_config_csv_header == config.header(),
+                "all the configurations must have a consistent CSV header"
+            );
+        } else {
+            config_csv_header = Some(config.header());
+        }
+
+        configurations.lock().unwrap().push(config);
     }
 
     if configurations.lock().unwrap().is_empty() {
         return Ok(());
     }
+    let config_csv_header = config_csv_header.expect("no configurations found");
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     for i in 0..std::cmp::min(args.concurrency, (args.seed_end - args.seed_init) as usize) {
@@ -124,6 +137,7 @@ async fn main() -> anyhow::Result<()> {
         outputs,
         &args.output_path,
         args.append,
+        &config_csv_header,
         &args.additional_header,
         &args.additional_fields,
     )
