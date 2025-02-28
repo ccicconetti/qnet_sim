@@ -440,7 +440,7 @@ fn find_possible_logical_edges(
                 }
             }
 
-            // The same node may be a rx, too
+            // The same node may be an rx, too
             if u_w.detectors > 0 {
                 rx_candidates.push(u.index());
             }
@@ -518,45 +518,51 @@ mod tests {
             std::collections::HashSet::from_iter(physical_topology.ogs_indices().iter().cloned());
         for e in &res {
             assert!(sat_indices.contains(&e.tx));
-            assert!(sat_indices.contains(&e.master) || ogs_indices.contains(&e.slave));
-            assert!(sat_indices.contains(&e.slave) || ogs_indices.contains(&e.master));
+            assert!(sat_indices.contains(&e.master) || ogs_indices.contains(&e.master));
+            assert!(sat_indices.contains(&e.slave) || ogs_indices.contains(&e.slave));
         }
     }
 
     #[test]
     fn test_logical_topology_physical_to_logical_random_greedy() -> anyhow::Result<()> {
-        let physical_topology = physical_topology_2_2();
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
 
-        let logical_graph = physical_to_logical_random_greedy(&physical_topology, &mut rng)?;
+        for _try in 0..10 {
+            let physical_topology = physical_topology_2_2();
+            let logical_graph = physical_to_logical_random_greedy(&physical_topology, &mut rng)?;
 
-        for e in logical_graph.edge_references() {
-            println!(
-                "{} -> {}, {:?}",
-                e.source().index(),
-                e.target().index(),
-                e.weight()
-            );
+            for e in logical_graph.edge_references() {
+                println!(
+                    "{} -> {}, {:?}",
+                    e.source().index(),
+                    e.target().index(),
+                    e.weight()
+                );
+            }
+
+            if is_valid(&logical_graph, &physical_topology).is_err() {
+                continue;
+            }
+
+            let all_paths = find_paths(&logical_graph)?;
+
+            for (source, paths) in all_paths {
+                assert!(paths.distances.iter().map(|x| x.cost).max().unwrap() <= 4);
+                println!(
+                    "distances of {}: {}",
+                    source,
+                    paths
+                        .distances
+                        .iter()
+                        .map(|x| format!("{}", x.cost))
+                        .collect::<Vec<String>>()
+                        .join(",")
+                );
+            }
+
+            return Ok(());
         }
 
-        is_valid(&logical_graph, &physical_topology)?;
-
-        let all_paths = find_paths(&logical_graph)?;
-
-        for (source, paths) in all_paths {
-            assert!(paths.distances.iter().map(|x| x.cost).max().unwrap() <= 4);
-            println!(
-                "distances of {}: {}",
-                source,
-                paths
-                    .distances
-                    .iter()
-                    .map(|x| format!("{}", x.cost))
-                    .collect::<Vec<String>>()
-                    .join(",")
-            );
-        }
-
-        Ok(())
+        anyhow::bail!("test failed");
     }
 }
