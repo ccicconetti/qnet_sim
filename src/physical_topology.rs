@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-enum NodeType {
+pub enum NodeType {
     /// Satellite node.
     SAT,
     /// On ground station.
@@ -357,7 +357,6 @@ impl PhysicalTopology {
                 }
                 for other_ndx in others {
                     assert!(other_ndx < num_sat);
-                    println!("{} {}", ndx, other_ndx);
                     if !graph.contains_edge(other_ndx.into(), ndx.into()) {
                         graph.add_edge(ndx.into(), other_ndx.into(), orbit_weight.clone());
                     }
