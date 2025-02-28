@@ -1,22 +1,51 @@
 // SPDX-FileCopyrightText: © 2025 Claudio Cicconetti <c.cicconetti@iit.cnr.it>
 // SPDX-License-Identifier: MIT
 
+use rand::SeedableRng;
+
 use crate::event::Event;
 use crate::utils::CsvFriend;
-// use rand::seq::SliceRandom;
-// use rand::SeedableRng;
-// use rand_distr::Distribution;
+use std::io::Write;
 
 pub struct Simulation {
     // internal data structures
     physical_topology: crate::physical_topology::PhysicalTopology,
+    logical_topology: crate::logical_topology::LogicalTopology,
 
     // configuration
     config: crate::config::Config,
 }
 
+fn save_to_dot_file<
+    T: petgraph::visit::Data
+        + petgraph::visit::IntoNodeReferences
+        + petgraph::visit::IntoEdgeReferences
+        + petgraph::visit::NodeIndexable
+        + petgraph::visit::GraphProp,
+>(
+    graph: T,
+    full_path: &str,
+) -> anyhow::Result<()>
+where
+    <T as petgraph::visit::Data>::EdgeWeight: std::fmt::Display,
+    <T as petgraph::visit::Data>::NodeWeight: std::fmt::Display,
+{
+    let mut dotfile = std::fs::OpenOptions::new()
+        .write(true)
+        .append(false)
+        .create(true)
+        .truncate(true)
+        .open(full_path)?;
+    let _ = writeln!(
+        dotfile,
+        "{}",
+        petgraph::dot::Dot::with_config(&graph, &[petgraph::dot::Config::NodeIndexLabel])
+    );
+    Ok(())
+}
+
 impl Simulation {
-    pub fn new(config: crate::config::Config) -> anyhow::Result<Self> {
+    pub fn new(config: crate::config::Config, save_to_dot: bool) -> anyhow::Result<Self> {
         anyhow::ensure!(config.user_config.duration > 0.0, "vanishing duration");
 
         let physical_topology = match &config.user_config.physical_topology {
@@ -30,8 +59,25 @@ impl Simulation {
             }
         };
 
+        let mut rng = rand::rngs::StdRng::seed_from_u64(config.seed);
+        let logical_topology = crate::logical_topology::LogicalTopology::from_physical_topology(
+            &config
+                .user_config
+                .logical_topology
+                .physical_to_logical_policy,
+            &physical_topology,
+            &mut rng,
+        )?;
+
+        if save_to_dot {
+            save_to_dot_file(physical_topology.graph(), "physical_topology.dot")?;
+            save_to_dot_file(logical_topology.graph(), "logical_topology.dot")?;
+            anyhow::bail!("saved to Dot files");
+        }
+
         Ok(Self {
             physical_topology,
+            logical_topology,
             config,
         })
     }

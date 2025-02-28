@@ -358,7 +358,7 @@ impl PhysicalTopology {
                 for other_ndx in others {
                     assert!(other_ndx < num_sat);
                     if !graph.contains_edge(other_ndx.into(), ndx.into()) {
-                        graph.add_edge(ndx.into(), other_ndx.into(), orbit_weight.clone());
+                        graph.add_edge(ndx.into(), other_ndx.into(), orbit_weight);
                     }
                 }
             }
@@ -392,7 +392,7 @@ impl PhysicalTopology {
                 for sat_ndx in sats {
                     assert!(sat_ndx < num_sat);
                     if !graph.contains_edge(sat_ndx.into(), ndx.into()) {
-                        graph.add_edge(ndx.into(), sat_ndx.into(), ground_weight.clone());
+                        graph.add_edge(ndx.into(), sat_ndx.into(), ground_weight);
                     }
                 }
             }
@@ -531,10 +531,6 @@ impl PhysicalTopology {
         }
     }
 
-    fn to_dot(&self) -> String {
-        format!("{}", petgraph::dot::Dot::new(&self.graph))
-    }
-
     /// Create a topology of default nodes with given distances.
     #[cfg(test)]
     fn from_distances(edges: Vec<(u32, u32, f64)>, fidelities: StaticFidelities) -> Self {
@@ -616,8 +612,8 @@ mod tests {
 
     #[test]
     fn test_physical_topology_dot() {
-        let graph = test_graph();
-        println!("{}", graph.to_dot());
+        let physical_topology = test_graph();
+        println!("{}", petgraph::dot::Dot::new(&physical_topology.graph));
     }
 
     #[test]
@@ -753,7 +749,7 @@ mod tests {
         assert_eq!((0..12).collect::<Vec<u32>>(), graph.sat_indices());
         assert_eq!((12..28).collect::<Vec<u32>>(), graph.ogs_indices());
         assert_eq!(28, graph.graph().node_count());
-        println!("{}", graph.to_dot());
+        println!("{}", petgraph::dot::Dot::new(&graph.graph));
         assert_float_eq::assert_f64_near!(2000.0, graph.distance(0, 1).unwrap());
         assert_float_eq::assert_f64_near!(4000.0, graph.distance(0, 2).unwrap());
         assert_float_eq::assert_f64_near!(2000.0, graph.distance(0, 3).unwrap());

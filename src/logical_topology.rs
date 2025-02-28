@@ -6,8 +6,22 @@ use shuffle::shuffler::Shuffler;
 
 const NEGLIGIBLE_AMOUNT: f64 = 1e-5;
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub enum PhysicalToLogicalPolicy {
+    RandomGreedy,
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialOrd, PartialEq)]
-struct EdgeWeight {
+pub struct NodeWeight {}
+
+impl std::fmt::Display for NodeWeight {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "")
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialOrd, PartialEq)]
+pub struct EdgeWeight {
     /// Index of the node that generates the EPR pair.
     pub tx: u32,
     /// Number of memory qubits reserved for this link.
@@ -16,6 +30,16 @@ struct EdgeWeight {
     pub capacity: f64,
     /// Cost of the edge, to compute shortest distance.
     pub cost: usize,
+}
+
+impl std::fmt::Display for EdgeWeight {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "tx {}, mem {}, cap {}",
+            self.tx, self.memory_qubits, self.capacity
+        )
+    }
 }
 
 impl petgraph::algo::FloatMeasure for EdgeWeight {
@@ -51,7 +75,7 @@ impl std::ops::Add for EdgeWeight {
     }
 }
 
-type Graph = petgraph::Graph<(), EdgeWeight, petgraph::Directed, u32>;
+type Graph = petgraph::Graph<NodeWeight, EdgeWeight, petgraph::Directed, u32>;
 type Paths = std::collections::HashMap<
     u32,
     petgraph::algo::bellman_ford::Paths<petgraph::graph::NodeIndex, EdgeWeight>,
@@ -72,11 +96,20 @@ pub struct LogicalTopology {
 }
 
 impl LogicalTopology {
+    pub fn graph(&self) -> &Graph {
+        &self.graph
+    }
+
     pub fn from_physical_topology(
+        policy: &PhysicalToLogicalPolicy,
         physical_topology: &crate::physical_topology::PhysicalTopology,
         rng: &mut rand::rngs::StdRng,
     ) -> anyhow::Result<Self> {
-        let graph = physical_to_logical_random_greedy(physical_topology, rng)?;
+        let graph = match policy {
+            PhysicalToLogicalPolicy::RandomGreedy => {
+                physical_to_logical_random_greedy(physical_topology, rng)?
+            }
+        };
         let paths = find_paths(&graph)?;
         Ok(Self { graph, paths })
     }
@@ -121,11 +154,11 @@ fn physical_to_logical_random_greedy(
 
     let mut physical_graph = physical_topology.graph().clone();
 
-    let mut logical_graph = petgraph::Graph::new();
+    let mut logical_graph = Graph::new();
 
     // Add all nodes from the physical topology.
     for _ in 0..physical_graph.node_count() {
-        logical_graph.add_node(());
+        logical_graph.add_node(NodeWeight {});
     }
 
     // Save OGS nodes.
@@ -243,7 +276,7 @@ fn physical_to_logical_random_greedy(
         }
     }
 
-    return Ok(logical_graph);
+    Ok(logical_graph)
 }
 
 /// Return all possible paths on the logical topology graph from any source node
@@ -251,7 +284,7 @@ fn physical_to_logical_random_greedy(
 fn find_paths(logical_graph: &Graph) -> anyhow::Result<Paths> {
     let mut all_paths = std::collections::HashMap::new();
     for source in logical_graph.node_indices() {
-        match petgraph::algo::bellman_ford(&logical_graph, source.into()) {
+        match petgraph::algo::bellman_ford(&logical_graph, source) {
             Ok(local_paths) => {
                 all_paths.insert(source.index() as u32, local_paths);
             }
@@ -373,7 +406,7 @@ fn reachable(graph: &Graph, nodes: &Vec<u32>) -> bool {
                     if *u == *v {
                         continue;
                     }
-                    if let None = &paths.predecessors[*v as usize] {
+                    if paths.predecessors[*v as usize].is_none() {
                         return false;
                     }
                 }

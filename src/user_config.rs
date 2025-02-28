@@ -13,8 +13,24 @@ impl Default for ConfGridStatic {
     fn default() -> Self {
         Self {
             grid_params: Default::default(),
-            sat_weight: crate::physical_topology::NodeWeight::default_sat(),
-            ogs_weight: crate::physical_topology::NodeWeight::default_ogs(),
+            sat_weight: crate::physical_topology::NodeWeight {
+                node_type: crate::physical_topology::NodeType::SAT,
+                memory_qubits: 20,
+                decay_rate: 1.0,
+                swapping_success_prob: 0.95,
+                detectors: 10,
+                transmitters: 10,
+                capacity: 1000.0,
+            },
+            ogs_weight: crate::physical_topology::NodeWeight {
+                node_type: crate::physical_topology::NodeType::OGS,
+                memory_qubits: 100,
+                decay_rate: 1.0,
+                swapping_success_prob: 0.0,
+                detectors: 10,
+                transmitters: 0,
+                capacity: 0.0,
+            },
             fidelities: Default::default(),
         }
     }
@@ -56,13 +72,39 @@ impl crate::utils::CsvFriend for PhysicalTopology {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct LogicalTopology {
+    pub physical_to_logical_policy: crate::logical_topology::PhysicalToLogicalPolicy,
+}
+
+impl Default for LogicalTopology {
+    fn default() -> Self {
+        Self {
+            physical_to_logical_policy:
+                crate::logical_topology::PhysicalToLogicalPolicy::RandomGreedy,
+        }
+    }
+}
+
+impl crate::utils::CsvFriend for LogicalTopology {
+    fn header(&self) -> String {
+        crate::utils::struct_to_csv_header(self).unwrap()
+    }
+
+    fn to_csv(&self) -> String {
+        crate::utils::struct_to_csv(self).unwrap()
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct UserConfig {
     /// The duration of the simulation, in s.
     pub duration: f64,
     /// The warm-up period, in s.
     pub warmup_period: f64,
-    /// The physical topology.
+    /// The physical topology configuration.
     pub physical_topology: PhysicalTopology,
+    /// The logical topology configuration.
+    pub logical_topology: LogicalTopology,
 }
 
 impl Default for UserConfig {
@@ -71,20 +113,26 @@ impl Default for UserConfig {
             duration: 10.0,
             warmup_period: 1.0,
             physical_topology: PhysicalTopology::ConfGridStatic(ConfGridStatic::default()),
+            logical_topology: LogicalTopology::default(),
         }
     }
 }
 
 impl crate::utils::CsvFriend for UserConfig {
     fn header(&self) -> String {
-        format!("duration,warmup_period,{}", self.physical_topology.header())
+        format!(
+            "duration,warmup_period,{},{}",
+            self.physical_topology.header(),
+            self.logical_topology.header()
+        )
     }
     fn to_csv(&self) -> String {
         format!(
-            "{},{},{}",
+            "{},{},{},{}",
             self.duration,
             self.warmup_period,
-            self.physical_topology.to_csv()
+            self.physical_topology.to_csv(),
+            self.logical_topology.to_csv()
         )
     }
 }

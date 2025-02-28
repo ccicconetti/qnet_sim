@@ -20,11 +20,14 @@ struct Args {
     #[arg(long, default_value_t = 0)]
     seed_init: u64,
     /// Final seed to initialize the pseudo-random number generators
-    #[arg(long, default_value_t = 10)]
+    #[arg(long, default_value_t = 1)]
     seed_end: u64,
     /// Number of parallel workers
     #[arg(long, default_value_t = std::thread::available_parallelism().unwrap().get())]
     concurrency: usize,
+    /// Save to Dot files and quit.
+    #[arg(long)]
+    save_to_dot: bool,
     /// Name of the path where to save the metrics collected.
     #[arg(long, default_value_t = String::from("data/"))]
     output_path: String,
@@ -63,6 +66,10 @@ async fn main() -> anyhow::Result<()> {
     anyhow::ensure!(
         args.additional_fields.matches(',').count() == args.additional_header.matches(',').count(),
         "--additional_fields and --additional_header have a different number of commas"
+    );
+    anyhow::ensure!(
+        !args.save_to_dot || (args.seed_end - args.seed_init) == 1,
+        "cannot use --save-to-dot with multiple seeds"
     );
 
     // Read the user's configuration file.
@@ -115,7 +122,7 @@ async fn main() -> anyhow::Result<()> {
                         break;
                     }
                 }
-                match Simulation::new(config.unwrap()) {
+                match Simulation::new(config.unwrap(), args.save_to_dot) {
                     Ok(mut sim) => tx.send(sim.run()).unwrap(),
                     Err(err) => log::error!("error when running simulation: {}", err),
                 };
@@ -132,13 +139,16 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // save output to files
-    assert!(!outputs.is_empty());
-    qnet_ll_sim::output::save_outputs(
-        outputs,
-        &args.output_path,
-        args.append,
-        &config_csv_header,
-        &args.additional_header,
-        &args.additional_fields,
-    )
+    if !outputs.is_empty() {
+        qnet_ll_sim::output::save_outputs(
+            outputs,
+            &args.output_path,
+            args.append,
+            &config_csv_header,
+            &args.additional_header,
+            &args.additional_fields,
+        )?;
+    }
+
+    Ok(())
 }

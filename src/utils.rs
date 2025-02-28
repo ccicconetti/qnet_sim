@@ -84,7 +84,7 @@ pub fn struct_to_csv_header<T: Serialize>(s: T) -> anyhow::Result<String> {
     let fields = struct_to_map(s)?;
     let mut ret = vec![];
     for (name, _value) in fields {
-        ret.push(format!("{}", name));
+        ret.push(name);
     }
     Ok(ret.join(","))
 }
