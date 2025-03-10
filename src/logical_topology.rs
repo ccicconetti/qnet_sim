@@ -313,7 +313,7 @@ fn find_paths(logical_graph: &Graph) -> anyhow::Result<Paths> {
 /// - `logical_topology`: the logical topology to validate.
 /// - `physical_topology`: the underlying physical topology.
 ///
-fn is_valid(
+pub fn is_valid(
     logical_topology: &Graph,
     physical_topology: &crate::physical_topology::PhysicalTopology,
 ) -> anyhow::Result<()> {
@@ -473,37 +473,7 @@ mod tests {
     use crate::logical_topology::is_valid;
 
     use super::{find_paths, find_possible_logical_edges, physical_to_logical_random_greedy};
-
-    fn physical_topology_2_2() -> crate::physical_topology::PhysicalTopology {
-        crate::physical_topology::PhysicalTopology::from_grid_static(
-            crate::physical_topology::GridParams {
-                orbit_to_orbit_distance: 1.0,
-                ground_to_orbit_distance: 1.0,
-                num_orbits: 2,
-                orbit_length: 2,
-            },
-            crate::physical_topology::NodeWeight {
-                node_type: crate::physical_topology::NodeType::SAT,
-                memory_qubits: 10,
-                decay_rate: 1.0,
-                swapping_success_prob: 0.5,
-                detectors: 10,
-                transmitters: 10,
-                capacity: 1.0,
-            },
-            crate::physical_topology::NodeWeight {
-                node_type: crate::physical_topology::NodeType::OGS,
-                memory_qubits: 20,
-                decay_rate: 1.0,
-                swapping_success_prob: 0.0,
-                detectors: 10,
-                transmitters: 0,
-                capacity: 0.0,
-            },
-            crate::physical_topology::StaticFidelities::default(),
-        )
-        .expect("invalid physical topology")
-    }
+    use crate::tests::physical_topology_2_2;
 
     #[test]
     fn test_logical_topology_find_possible_logical_edges() {

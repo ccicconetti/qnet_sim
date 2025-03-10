@@ -69,6 +69,8 @@ impl Simulation {
             &mut rng,
         )?;
 
+        crate::logical_topology::is_valid(logical_topology.graph(), &physical_topology)?;
+
         if save_to_dot {
             save_to_dot_file(physical_topology.graph(), "physical_topology.dot")?;
             save_to_dot_file(logical_topology.graph(), "logical_topology.dot")?;
