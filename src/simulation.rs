@@ -3,7 +3,6 @@
 
 use rand::SeedableRng;
 
-use crate::event::Event;
 use crate::utils::CsvFriend;
 use std::io::Write;
 
@@ -11,6 +10,7 @@ pub struct Simulation {
     // internal data structures
     physical_topology: crate::physical_topology::PhysicalTopology,
     logical_topology: crate::logical_topology::LogicalTopology,
+    network: crate::network::Network,
 
     // configuration
     config: crate::config::Config,
@@ -77,9 +77,12 @@ impl Simulation {
             anyhow::bail!("saved to Dot files");
         }
 
+        let network = crate::network::Network::new(&logical_topology, config.seed);
+
         Ok(Self {
             physical_topology,
             logical_topology,
+            network,
             config,
         })
     }
@@ -94,16 +97,18 @@ impl Simulation {
 
         // create the event queue and push initial events
         let mut events = crate::event_queue::EventQueue::default();
-        events.push(Event::WarmupPeriodEnd(crate::utils::to_nanoseconds(
+        events.push(super::event::Event::new(
             conf.warmup_period,
-        )));
-        events.push(Event::ExperimentEnd(crate::utils::to_nanoseconds(
+            super::event::EventType::WarmupPeriodEnd,
+        ));
+        events.push(super::event::Event::new(
             conf.duration,
-        )));
+            super::event::EventType::ExperimentEnd,
+        ));
         for i in 1..100 {
-            events.push(Event::Progress(
-                crate::utils::to_nanoseconds(i as f64 * conf.duration / 100.0),
-                i,
+            events.push(super::event::Event::new(
+                i as f64 * conf.duration / 100.0,
+                super::event::EventType::Progress(i),
             ));
         }
 
@@ -121,6 +126,7 @@ impl Simulation {
         'main_loop: loop {
             if let Some(event) = events.pop() {
                 now = event.time();
+                assert_eq!(now, events.last_time());
 
                 single.time_avg("event_queue_len", now, events.len() as f64);
 
@@ -132,18 +138,26 @@ impl Simulation {
                 num_events += 1;
 
                 // handle the current event
-                match event {
-                    Event::WarmupPeriodEnd(_) => {
+                match event.event_type {
+                    super::event::EventType::WarmupPeriodEnd => {
                         log::debug!("W {}", now);
                         single.enable(now);
                         series.enable();
                     }
-                    Event::ExperimentEnd(_) => {
+                    super::event::EventType::ExperimentEnd => {
                         log::debug!("E {}", now);
                         break 'main_loop;
                     }
-                    Event::Progress(_, percentage) => {
+                    super::event::EventType::Progress(percentage) => {
                         log::info!("completed {}%", percentage);
+                    }
+                    super::event::EventType::EprGenerated(event_data) => {
+                        log::debug!("G {:?}", event_data);
+                        events.push_many(self.network.new_epr(
+                            event_data.tx_node_id,
+                            event_data.master_node_id,
+                            event_data.slave_node_id,
+                        ));
                     }
                 }
             }
