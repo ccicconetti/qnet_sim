@@ -10,7 +10,6 @@ use crate::event::{Event, EventHandler, EventType};
 
 pub struct Simulation {
     // internal data structures
-    physical_topology: crate::physical_topology::PhysicalTopology,
     logical_topology: crate::logical_topology::LogicalTopology,
     network: crate::network::Network,
 
@@ -79,10 +78,10 @@ impl Simulation {
             anyhow::bail!("saved to Dot files");
         }
 
-        let network = crate::network::Network::new(&logical_topology, config.seed);
+        let network =
+            crate::network::Network::new(&logical_topology, physical_topology, config.seed);
 
         Ok(Self {
-            physical_topology,
             logical_topology,
             network,
             config,
@@ -152,6 +151,10 @@ impl Simulation {
                     }
                     EventType::EprGenerated(event_data) => {
                         log::debug!("G {} {:?}", now, event_data);
+                        events.push_many(self.network.handle(event));
+                    }
+                    EventType::EprNotified(event_data) => {
+                        log::debug!("N {} {:?}", now, event_data);
                         events.push_many(self.network.handle(event));
                     }
                 }

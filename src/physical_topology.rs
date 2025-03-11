@@ -427,7 +427,7 @@ impl PhysicalTopology {
 
     /// Return the distance from node u to node v, in m.
     /// The paths are computed in a lazy manner.
-    fn distance(&mut self, u: u32, v: u32) -> anyhow::Result<f64> {
+    pub fn distance(&mut self, u: u32, v: u32) -> anyhow::Result<f64> {
         valid_node!(u, self.graph);
         valid_node!(v, self.graph);
         if let Some(paths) = self.paths.get(&u) {
@@ -459,7 +459,7 @@ impl PhysicalTopology {
     /// - `tx`: the node that generates EPR pairs
     /// - `u`: one of the nodes that receives one photon of the EPR pairs
     /// - `v`: the other one
-    fn fidelity(&mut self, tx: u32, u: u32, v: u32) -> anyhow::Result<f64> {
+    pub fn fidelity(&self, tx: u32, u: u32, v: u32) -> anyhow::Result<f64> {
         valid_node!(tx, self.graph);
         valid_node!(u, self.graph);
         valid_node!(v, self.graph);

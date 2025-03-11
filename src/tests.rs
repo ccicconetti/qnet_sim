@@ -34,21 +34,25 @@ pub fn physical_topology_2_2() -> crate::physical_topology::PhysicalTopology {
     .expect("invalid physical topology")
 }
 
-pub fn logical_topology_2_2() -> crate::logical_topology::LogicalTopology {
+pub fn logical_topology_2_2() -> (
+    crate::physical_topology::PhysicalTopology,
+    crate::logical_topology::LogicalTopology,
+) {
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
     let num_tries = 10;
 
     for _try in 0..num_tries {
         let physical_topology = physical_topology_2_2();
-        let logical_graph = crate::logical_topology::LogicalTopology::from_physical_topology(
+        let logical_topology = crate::logical_topology::LogicalTopology::from_physical_topology(
             &crate::logical_topology::PhysicalToLogicalPolicy::RandomGreedy,
             &physical_topology,
             &mut rng,
         )
         .expect("could not derive logical graph from physical topology");
 
-        if crate::logical_topology::is_valid(&logical_graph.graph(), &physical_topology).is_ok() {
-            return logical_graph;
+        if crate::logical_topology::is_valid(&logical_topology.graph(), &physical_topology).is_ok()
+        {
+            return (physical_topology, logical_topology);
         }
     }
     panic!(

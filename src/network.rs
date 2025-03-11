@@ -5,8 +5,7 @@ use petgraph::visit::EdgeRef;
 use rand::SeedableRng;
 use rand_distr::Distribution;
 
-use crate::event::EventHandler;
-use crate::event::{EprGeneratedData, Event, EventType};
+use crate::event::{EprGeneratedData, EprNotifiedData, Event, EventType};
 
 #[derive(Debug)]
 pub struct EprGenerator {
@@ -19,23 +18,17 @@ pub struct EprGenerator {
 }
 
 impl EprGenerator {
-    fn handle(&mut self) -> Vec<crate::event::Event> {
-        let mut events = vec![];
-
-        // Notify peer nodes of the new EPR available.
-
-        // Schedule the next EPR generation.
+    /// Schedule the next EPR generation.
+    fn handle(&mut self) -> crate::event::Event {
         let next_epr_generation = self.rv.sample(&mut self.rng);
-        events.push(Event::new(
+        Event::new(
             next_epr_generation,
             EventType::EprGenerated(EprGeneratedData {
                 tx_node_id: self.tx_node_id,
                 master_node_id: self.master_node_id,
                 slave_node_id: self.slave_node_id,
             }),
-        ));
-
-        events
+        )
     }
 }
 
@@ -46,12 +39,17 @@ pub struct Network {
     nodes: Vec<super::node::Node>,
     /// The EPR pair generators, indexed by the ID of the tx node.
     epr_generators: std::collections::HashMap<u32, Vec<EprGenerator>>,
+    /// The EPR register.
+    epr_register: crate::epr_register::EprRegister,
+    /// The physical topology.
+    physical_topology: crate::physical_topology::PhysicalTopology,
 }
 
 impl Network {
     /// Create a network from the logical topology.
     pub fn new(
         logical_topology: &super::logical_topology::LogicalTopology,
+        physical_topology: crate::physical_topology::PhysicalTopology,
         init_seed: u64,
     ) -> Self {
         // Create the nodes.
@@ -94,33 +92,105 @@ impl Network {
                 });
         }
 
+        let epr_register = crate::epr_register::EprRegister::default();
         Self {
             nodes,
             epr_generators,
+            epr_register,
+            physical_topology,
         }
+    }
+
+    fn handle_epr_generated(&mut self, now: u64, data: EprGeneratedData) -> Vec<Event> {
+        for generator in self
+            .epr_generators
+            .get_mut(&data.tx_node_id)
+            .expect("unknown tx node id")
+        {
+            if generator.master_node_id == data.master_node_id
+                && generator.slave_node_id == data.slave_node_id
+            {
+                let mut events = vec![];
+
+                // Create a new EPR pair.
+                if let Ok(fidelity) = self.physical_topology.fidelity(
+                    data.tx_node_id,
+                    data.master_node_id,
+                    data.slave_node_id,
+                ) {
+                    let epr_pair_id = self.epr_register.new_epr_pair(
+                        data.master_node_id,
+                        data.slave_node_id,
+                        now,
+                        fidelity,
+                    );
+
+                    // Add events notifying the creation of the EPR pair
+                    // on the master/slave nodes.
+                    events.push(Event::new(
+                        0.0_f64,
+                        EventType::EprNotified(EprNotifiedData {
+                            this_node_id: data.master_node_id,
+                            peer_node_id: data.slave_node_id,
+                            role: crate::nic::Role::Master,
+                            epr_pair_id,
+                        }),
+                    ));
+                    events.push(Event::new(
+                        0.0_f64,
+                        EventType::EprNotified(EprNotifiedData {
+                            this_node_id: data.slave_node_id,
+                            peer_node_id: data.master_node_id,
+                            role: crate::nic::Role::Slave,
+                            epr_pair_id,
+                        }),
+                    ));
+                }
+
+                // Add event to generate another EPR pair in the future.
+                events.push(generator.handle());
+
+                return events;
+            }
+        }
+        panic!(
+            "could not find generator for tx_node_id {} master_node_id {} slave_node_id {}",
+            data.tx_node_id, data.master_node_id, data.slave_node_id
+        );
+    }
+
+    fn handle_epr_notified(&mut self, now: u64, data: EprNotifiedData) -> Vec<Event> {
+        // Check consistency.
+        assert!(
+            data.this_node_id < self.nodes.len() as u32,
+            "invalid node identifier {} with {} nodes",
+            data.this_node_id,
+            self.nodes.len()
+        );
+        assert!(
+            data.peer_node_id < self.nodes.len() as u32,
+            "invalid node identifier {} with {} nodes",
+            data.peer_node_id,
+            self.nodes.len()
+        );
+
+        self.nodes[data.this_node_id as usize].epr_established(
+            now,
+            data.peer_node_id,
+            data.role,
+            data.epr_pair_id,
+        );
+
+        vec![]
     }
 }
 
 impl crate::event::EventHandler for Network {
     fn handle(&mut self, event: Event) -> Vec<Event> {
-        match &event.event_type {
-            EventType::EprGenerated(data) => {
-                for generator in self
-                    .epr_generators
-                    .get_mut(&data.tx_node_id)
-                    .expect("unknown tx node id")
-                {
-                    if generator.master_node_id == data.master_node_id
-                        && generator.slave_node_id == data.slave_node_id
-                    {
-                        return generator.handle();
-                    }
-                }
-                panic!(
-                    "could not find generator for tx_node_id {} master_node_id {} slave_node_id {}",
-                    data.tx_node_id, data.master_node_id, data.slave_node_id
-                );
-            }
+        let now = event.time();
+        match event.event_type {
+            EventType::EprGenerated(data) => self.handle_epr_generated(now, data),
+            EventType::EprNotified(data) => self.handle_epr_notified(now, data),
             _ => panic!(
                 "invalid event {:?} received by a Network object",
                 event.event_type
@@ -128,17 +198,13 @@ impl crate::event::EventHandler for Network {
         }
     }
 
+    /// Kick start all the EPR generators.
     fn initial(&mut self) -> Vec<Event> {
         let mut events = vec![];
 
         for generators in self.epr_generators.values_mut() {
             for generator in generators {
-                for event in generator.handle() {
-                    match &event.event_type {
-                        EventType::EprGenerated(data) => events.push(event),
-                        _ => {}
-                    }
-                }
+                events.push(generator.handle());
             }
         }
 
@@ -155,8 +221,8 @@ mod tests {
 
     #[test]
     fn test_network_from_logical_topology() {
-        let logical_topology = crate::tests::logical_topology_2_2();
-        let network = Network::new(&logical_topology, 42);
+        let (physical_topology, logical_topology) = crate::tests::logical_topology_2_2();
+        let network = Network::new(&logical_topology, physical_topology, 42);
         assert_eq!(10, network.nodes.len());
     }
 
