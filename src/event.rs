@@ -8,7 +8,7 @@ pub struct EprGeneratedData {
     pub slave_node_id: u32,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum EventType {
     /// The warm-up period expires.
     WarmupPeriodEnd,
@@ -59,5 +59,6 @@ impl Ord for Event {
 }
 
 pub trait EventHandler {
-    fn handle(&mut self) -> Vec<Event>;
+    fn handle(&mut self, event: Event) -> Vec<Event>;
+    fn initial(&mut self) -> Vec<Event>;
 }

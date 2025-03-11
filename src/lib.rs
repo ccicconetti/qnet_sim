@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 pub mod config;
+pub mod epr_register;
 pub mod event;
 pub mod event_queue;
 pub mod logical_topology;

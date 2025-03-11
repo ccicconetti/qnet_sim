@@ -6,6 +6,7 @@ use rand::SeedableRng;
 use rand_distr::Distribution;
 
 use crate::event::EventHandler;
+use crate::event::{EprGeneratedData, Event, EventType};
 
 #[derive(Debug)]
 pub struct EprGenerator {
@@ -17,18 +18,23 @@ pub struct EprGenerator {
     rng: rand::rngs::StdRng,
 }
 
-impl crate::event::EventHandler for EprGenerator {
+impl EprGenerator {
     fn handle(&mut self) -> Vec<crate::event::Event> {
         let mut events = vec![];
+
+        // Notify peer nodes of the new EPR available.
+
+        // Schedule the next EPR generation.
         let next_epr_generation = self.rv.sample(&mut self.rng);
-        events.push(super::event::Event::new(
+        events.push(Event::new(
             next_epr_generation,
-            super::event::EventType::EprGenerated(super::event::EprGeneratedData {
+            EventType::EprGenerated(EprGeneratedData {
                 tx_node_id: self.tx_node_id,
                 master_node_id: self.master_node_id,
                 slave_node_id: self.slave_node_id,
             }),
         ));
+
         events
     }
 }
@@ -93,28 +99,50 @@ impl Network {
             epr_generators,
         }
     }
+}
 
-    pub fn new_epr(
-        &mut self,
-        tx_node_id: u32,
-        master_node_id: u32,
-        slave_node_id: u32,
-    ) -> Vec<super::event::Event> {
-        for generator in self
-            .epr_generators
-            .get_mut(&tx_node_id)
-            .expect("unknown tx node id")
-        {
-            if generator.master_node_id == master_node_id
-                && generator.slave_node_id == slave_node_id
-            {
-                return generator.handle();
+impl crate::event::EventHandler for Network {
+    fn handle(&mut self, event: Event) -> Vec<Event> {
+        match &event.event_type {
+            EventType::EprGenerated(data) => {
+                for generator in self
+                    .epr_generators
+                    .get_mut(&data.tx_node_id)
+                    .expect("unknown tx node id")
+                {
+                    if generator.master_node_id == data.master_node_id
+                        && generator.slave_node_id == data.slave_node_id
+                    {
+                        return generator.handle();
+                    }
+                }
+                panic!(
+                    "could not find generator for tx_node_id {} master_node_id {} slave_node_id {}",
+                    data.tx_node_id, data.master_node_id, data.slave_node_id
+                );
+            }
+            _ => panic!(
+                "invalid event {:?} received by a Network object",
+                event.event_type
+            ),
+        }
+    }
+
+    fn initial(&mut self) -> Vec<Event> {
+        let mut events = vec![];
+
+        for generators in self.epr_generators.values_mut() {
+            for generator in generators {
+                for event in generator.handle() {
+                    match &event.event_type {
+                        EventType::EprGenerated(data) => events.push(event),
+                        _ => {}
+                    }
+                }
             }
         }
-        panic!(
-            "could not find generator for tx_node_id {} master_node_id {} slave_node_id {}",
-            tx_node_id, master_node_id, slave_node_id
-        );
+
+        events
     }
 }
 

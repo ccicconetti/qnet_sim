@@ -6,6 +6,8 @@ use rand::SeedableRng;
 use crate::utils::CsvFriend;
 use std::io::Write;
 
+use crate::event::{Event, EventHandler, EventType};
+
 pub struct Simulation {
     // internal data structures
     physical_topology: crate::physical_topology::PhysicalTopology,
@@ -91,26 +93,23 @@ impl Simulation {
     pub fn run(&mut self) -> crate::output::Output {
         let conf = &self.config.user_config;
 
+        log::debug!("{:#?}", self.logical_topology.graph());
+
         // outputs
         let mut single = crate::output::OutputSingle::new();
         let mut series = crate::output::OutputSeries::new();
 
         // create the event queue and push initial events
         let mut events = crate::event_queue::EventQueue::default();
-        events.push(super::event::Event::new(
-            conf.warmup_period,
-            super::event::EventType::WarmupPeriodEnd,
-        ));
-        events.push(super::event::Event::new(
-            conf.duration,
-            super::event::EventType::ExperimentEnd,
-        ));
+        events.push(Event::new(conf.warmup_period, EventType::WarmupPeriodEnd));
+        events.push(Event::new(conf.duration, EventType::ExperimentEnd));
         for i in 1..100 {
-            events.push(super::event::Event::new(
+            events.push(Event::new(
                 i as f64 * conf.duration / 100.0,
-                super::event::EventType::Progress(i),
+                EventType::Progress(i),
             ));
         }
+        events.push_many(self.network.initial());
 
         // initialize simulated time and ID of the first job
         let mut now;
@@ -138,26 +137,22 @@ impl Simulation {
                 num_events += 1;
 
                 // handle the current event
-                match event.event_type {
-                    super::event::EventType::WarmupPeriodEnd => {
+                match &event.event_type {
+                    EventType::WarmupPeriodEnd => {
                         log::debug!("W {}", now);
                         single.enable(now);
                         series.enable();
                     }
-                    super::event::EventType::ExperimentEnd => {
+                    EventType::ExperimentEnd => {
                         log::debug!("E {}", now);
                         break 'main_loop;
                     }
-                    super::event::EventType::Progress(percentage) => {
+                    EventType::Progress(percentage) => {
                         log::info!("completed {}%", percentage);
                     }
-                    super::event::EventType::EprGenerated(event_data) => {
-                        log::debug!("G {:?}", event_data);
-                        events.push_many(self.network.new_epr(
-                            event_data.tx_node_id,
-                            event_data.master_node_id,
-                            event_data.slave_node_id,
-                        ));
+                    EventType::EprGenerated(event_data) => {
+                        log::debug!("G {} {:?}", now, event_data);
+                        events.push_many(self.network.handle(event));
                     }
                 }
             }
