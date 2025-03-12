@@ -37,18 +37,20 @@ impl Node {
             .is_none()
     }
 
-    /// Notify that a new EPR has been established.
+    /// Notify that a new EPR has been established. Return the occupancy ratio.
     pub fn epr_established(
         &mut self,
         now: u64,
         peer_node_id: u32,
         role: super::nic::Role,
         epr_pair_id: u64,
-    ) {
-        self.nics(&role)
+    ) -> f64 {
+        let nic = self
+            .nics(&role)
             .get_mut(&peer_node_id)
-            .unwrap_or_else(|| panic!("could not find NIC for peer {}", peer_node_id))
-            .add_epr_pair(now, epr_pair_id);
+            .unwrap_or_else(|| panic!("could not find NIC for peer {}", peer_node_id));
+        nic.add_epr_pair(now, epr_pair_id);
+        nic.occupancy()
     }
 
     /// Return the right set of NICs depending on the role.

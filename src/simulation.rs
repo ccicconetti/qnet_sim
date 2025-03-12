@@ -3,7 +3,7 @@
 
 use rand::SeedableRng;
 
-use crate::utils::CsvFriend;
+use crate::{output::Sample, utils::CsvFriend};
 use std::io::Write;
 
 use crate::event::{Event, EventHandler, EventType};
@@ -12,6 +12,9 @@ pub struct Simulation {
     // internal data structures
     logical_topology: crate::logical_topology::LogicalTopology,
     network: crate::network::Network,
+    events: crate::event_queue::EventQueue,
+    single: crate::output::OutputSingle,
+    series: crate::output::OutputSeries,
 
     // configuration
     config: crate::config::Config,
@@ -80,12 +83,34 @@ impl Simulation {
 
         let network =
             crate::network::Network::new(&logical_topology, physical_topology, config.seed);
+        let series = crate::output::OutputSeries::new(config.user_config.series_ignore.clone());
 
         Ok(Self {
             logical_topology,
             network,
             config,
+            events: crate::event_queue::EventQueue::default(),
+            single: crate::output::OutputSingle::default(),
+            series,
         })
+    }
+
+    /// Add all the events to the event queue and save metrics.
+    fn update(&mut self, events: Vec<Event>, samples: Vec<Sample>) {
+        for event in events {
+            self.events.push(event);
+        }
+        let now = self.events.last_time();
+        for sample in samples {
+            match sample {
+                Sample::SingleOneTime(name, value) => self.single.one_time(&name, value),
+                Sample::SingleTimeAvg(name, value) => self.single.time_avg(&name, now, value),
+                Sample::Series(name, label, value) => {
+                    self.series
+                        .add(&name, &label, crate::utils::to_seconds(now), value)
+                }
+            }
+        }
     }
 
     /// Run a simulation.
@@ -94,21 +119,19 @@ impl Simulation {
 
         log::debug!("{:#?}", self.logical_topology.graph());
 
-        // outputs
-        let mut single = crate::output::OutputSingle::new();
-        let mut series = crate::output::OutputSeries::new();
-
-        // create the event queue and push initial events
-        let mut events = crate::event_queue::EventQueue::default();
-        events.push(Event::new(conf.warmup_period, EventType::WarmupPeriodEnd));
-        events.push(Event::new(conf.duration, EventType::ExperimentEnd));
+        // push initial events
+        self.events
+            .push(Event::new(conf.warmup_period, EventType::WarmupPeriodEnd));
+        self.events
+            .push(Event::new(conf.duration, EventType::ExperimentEnd));
         for i in 1..100 {
-            events.push(Event::new(
+            self.events.push(Event::new(
                 i as f64 * conf.duration / 100.0,
                 EventType::Progress(i),
             ));
         }
-        events.push_many(self.network.initial());
+        let initial_network_events = self.network.initial();
+        self.update(initial_network_events, vec![]);
 
         // initialize simulated time and ID of the first job
         let mut now;
@@ -122,11 +145,12 @@ impl Simulation {
         let real_now = std::time::Instant::now();
         let mut last_time = 0;
         'main_loop: loop {
-            if let Some(event) = events.pop() {
+            if let Some(event) = self.events.pop() {
                 now = event.time();
-                assert_eq!(now, events.last_time());
+                assert_eq!(now, self.events.last_time());
 
-                single.time_avg("event_queue_len", now, events.len() as f64);
+                self.single
+                    .time_avg("event_queue_len", now, self.events.len() as f64);
 
                 // make sure we never go back in time
                 assert!(now >= last_time);
@@ -139,8 +163,8 @@ impl Simulation {
                 match &event.event_type {
                     EventType::WarmupPeriodEnd => {
                         log::debug!("W {}", now);
-                        single.enable(now);
-                        series.enable();
+                        self.single.enable(now);
+                        self.series.enable();
                     }
                     EventType::ExperimentEnd => {
                         log::debug!("E {}", now);
@@ -151,21 +175,26 @@ impl Simulation {
                     }
                     EventType::EprGenerated(event_data) => {
                         log::debug!("G {} {:?}", now, event_data);
-                        events.push_many(self.network.handle(event));
+                        let (new_events, new_samples) = self.network.handle(event);
+                        self.update(new_events, new_samples);
                     }
                     EventType::EprNotified(event_data) => {
                         log::debug!("N {} {:?}", now, event_data);
-                        events.push_many(self.network.handle(event));
+                        let (new_events, new_samples) = self.network.handle(event);
+                        self.update(new_events, new_samples);
                     }
                 }
             }
         }
 
         // save final metrics
-        single.one_time("num_events", num_events as f64);
-        single.one_time("execution_time", real_now.elapsed().as_secs_f64());
+        self.single.one_time("num_events", num_events as f64);
+        self.single
+            .one_time("execution_time", real_now.elapsed().as_secs_f64());
 
         // return the simulation output
+        let single = std::mem::take(&mut self.single);
+        let series = std::mem::take(&mut self.series);
         crate::output::Output {
             single,
             series,

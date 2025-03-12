@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: © 2025 Claudio Cicconetti <c.cicconetti@iit.cnr.it>
 // SPDX-License-Identifier: MIT
 
+use crate::output::Sample;
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct EprGeneratedData {
     pub tx_node_id: u32,
@@ -69,6 +71,6 @@ impl Ord for Event {
 }
 
 pub trait EventHandler {
-    fn handle(&mut self, event: Event) -> Vec<Event>;
+    fn handle(&mut self, event: Event) -> (Vec<Event>, Vec<Sample>);
     fn initial(&mut self) -> Vec<Event>;
 }

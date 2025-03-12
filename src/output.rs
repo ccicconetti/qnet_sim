@@ -5,6 +5,13 @@ use std::io::Write;
 
 use crate::utils::CsvFriend;
 
+#[derive(Debug)]
+pub enum Sample {
+    SingleOneTime(String, f64),
+    SingleTimeAvg(String, f64),
+    Series(String, String, f64),
+}
+
 struct TimeAvg {
     last_update: u64,
     last_value: f64,
@@ -26,6 +33,7 @@ impl TimeAvg {
     }
 }
 
+#[derive(Default)]
 pub struct OutputSingle {
     enabled: bool,
     warmup: u64,
@@ -34,15 +42,6 @@ pub struct OutputSingle {
 }
 
 impl OutputSingle {
-    pub fn new() -> Self {
-        Self {
-            enabled: false,
-            warmup: 0,
-            one_time: std::collections::BTreeMap::new(),
-            time_avg: std::collections::BTreeMap::new(),
-        }
-    }
-
     pub fn one_time(&mut self, name: &str, value: f64) {
         if self.enabled {
             self.one_time.insert(name.to_string(), value);
@@ -114,15 +113,9 @@ impl CsvFriend for OutputSingle {
     }
 }
 
-impl Default for OutputSingle {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 pub struct OutputSeriesSingle {
     pub header: String,
-    pub values: std::collections::HashMap<String, Vec<f64>>,
+    pub values: std::collections::HashMap<String, Vec<(f64, f64)>>,
 }
 
 impl Default for OutputSeriesSingle {
@@ -137,21 +130,18 @@ impl Default for OutputSeriesSingle {
 /// Series of values.
 /// The values are not recorded until `enabled()` is called.
 /// Each series is associated with a name (with optional header) and a label.
+#[derive(Default)]
 pub struct OutputSeries {
     enabled: bool,
+    ignore: std::collections::HashSet<String>,
     pub series: std::collections::HashMap<String, OutputSeriesSingle>,
 }
 
-impl Default for OutputSeries {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl OutputSeries {
-    pub fn new() -> Self {
+    pub fn new(ignore: std::collections::HashSet<String>) -> Self {
         Self {
             enabled: false,
+            ignore,
             series: std::collections::HashMap::new(),
         }
     }
@@ -160,16 +150,17 @@ impl OutputSeries {
     /// Parameters:
     /// - `name`: the metric name.
     /// - `label`: a label associated with the value.
+    /// - `time`: timestamp of the value.
     /// - `value`: the value added, if collection is enabled.
-    pub fn add(&mut self, name: &str, label: &str, value: f64) {
-        if self.enabled {
+    pub fn add(&mut self, name: &str, label: &str, time: f64, value: f64) {
+        if self.enabled && !self.ignore.contains(name) {
             self.series
                 .entry(name.to_string())
                 .or_default()
                 .values
                 .entry(label.to_string())
                 .or_default()
-                .push(value);
+                .push((time, value));
         }
     }
 
@@ -230,17 +221,17 @@ pub fn save_outputs(
                 format!("{}.csv", name).as_str(),
                 append,
                 format!(
-                    "{}{},{},value",
+                    "{}{},{},time,value",
                     additional_header, &config_csv_header, elem.header
                 )
                 .as_str(),
             )?;
             for (label, values) in &elem.values {
-                for value in values {
+                for (time, value) in values {
                     writeln!(
                         &mut series_file,
-                        "{}{},{},{}",
-                        additional_fields, output.config_csv, label, value
+                        "{}{},{},{},{}",
+                        additional_fields, output.config_csv, label, time, value
                     )?;
                 }
             }
@@ -259,7 +250,7 @@ mod tests {
         let warmups = [0, 5];
         let expected_values = [1.9, 2.0];
         for (warmup, expected_value) in warmups.iter().zip(expected_values.iter()) {
-            let mut single = OutputSingle::new();
+            let mut single = OutputSingle::default();
             single.enable(*warmup);
             single.time_avg("metric", 20, 1.0);
             single.time_avg("metric", 30, 2.0);

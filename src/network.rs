@@ -5,7 +5,10 @@ use petgraph::visit::EdgeRef;
 use rand::SeedableRng;
 use rand_distr::Distribution;
 
-use crate::event::{EprGeneratedData, EprNotifiedData, Event, EventType};
+use crate::{
+    event::{EprGeneratedData, EprNotifiedData, Event, EventType},
+    output::Sample,
+};
 
 #[derive(Debug)]
 pub struct EprGenerator {
@@ -101,7 +104,11 @@ impl Network {
         }
     }
 
-    fn handle_epr_generated(&mut self, now: u64, data: EprGeneratedData) -> Vec<Event> {
+    fn handle_epr_generated(
+        &mut self,
+        now: u64,
+        data: EprGeneratedData,
+    ) -> (Vec<Event>, Vec<Sample>) {
         for generator in self
             .epr_generators
             .get_mut(&data.tx_node_id)
@@ -111,6 +118,7 @@ impl Network {
                 && generator.slave_node_id == data.slave_node_id
             {
                 let mut events = vec![];
+                let mut samples = vec![];
 
                 // Create a new EPR pair.
                 if let Ok(fidelity) = self.physical_topology.fidelity(
@@ -118,6 +126,12 @@ impl Network {
                     data.master_node_id,
                     data.slave_node_id,
                 ) {
+                    samples.push(Sample::Series(
+                        "gen_fidelity".to_string(),
+                        data.tx_node_id.to_string(),
+                        fidelity,
+                    ));
+
                     let epr_pair_id = self.epr_register.new_epr_pair(
                         data.master_node_id,
                         data.slave_node_id,
@@ -150,7 +164,7 @@ impl Network {
                 // Add event to generate another EPR pair in the future.
                 events.push(generator.handle());
 
-                return events;
+                return (events, samples);
             }
         }
         panic!(
@@ -159,7 +173,11 @@ impl Network {
         );
     }
 
-    fn handle_epr_notified(&mut self, now: u64, data: EprNotifiedData) -> Vec<Event> {
+    fn handle_epr_notified(
+        &mut self,
+        now: u64,
+        data: EprNotifiedData,
+    ) -> (Vec<Event>, Vec<Sample>) {
         // Check consistency.
         assert!(
             data.this_node_id < self.nodes.len() as u32,
@@ -174,19 +192,30 @@ impl Network {
             self.nodes.len()
         );
 
-        self.nodes[data.this_node_id as usize].epr_established(
+        let occupancy = self.nodes[data.this_node_id as usize].epr_established(
             now,
             data.peer_node_id,
             data.role,
             data.epr_pair_id,
         );
 
-        vec![]
+        (
+            vec![],
+            vec![Sample::Series(
+                "occupancy".to_string(),
+                format!(
+                    "{}-{}",
+                    data.this_node_id.to_string(),
+                    data.peer_node_id.to_string()
+                ),
+                occupancy,
+            )],
+        )
     }
 }
 
 impl crate::event::EventHandler for Network {
-    fn handle(&mut self, event: Event) -> Vec<Event> {
+    fn handle(&mut self, event: Event) -> (Vec<Event>, Vec<Sample>) {
         let now = event.time();
         match event.event_type {
             EventType::EprGenerated(data) => self.handle_epr_generated(now, data),

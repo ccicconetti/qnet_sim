@@ -70,6 +70,20 @@ impl Nic {
             self.memory_cells[index] = MemoryCell::Valid(now, epr_pair_id);
         }
     }
+
+    /// Return the occupancy of the NIC, i.e., the number of non-empty memory
+    /// cells divided by the total number of cells.
+    pub fn occupancy(&mut self) -> f64 {
+        if self.memory_cells.len() == 0 {
+            0.0
+        } else {
+            self.memory_cells
+                .iter()
+                .map(|cell| matches!(cell, MemoryCell::Valid(_, _)) as u32)
+                .sum::<u32>() as f64
+                / self.memory_cells.len() as f64
+        }
+    }
 }
 
 #[cfg(test)]
@@ -86,9 +100,14 @@ mod tests {
             assert!(matches!(cell, MemoryCell::Empty));
         }
 
+        assert_float_eq::assert_f64_near!(0.0, nic.occupancy());
+
         for i in 0..10 {
             nic.add_epr_pair(i + 100, i);
+            assert_float_eq::assert_f64_near!(0.1 * (i + 1) as f64, nic.occupancy());
         }
+
+        assert_float_eq::assert_f64_near!(1.0, nic.occupancy());
 
         for cell in &nic.memory_cells {
             assert!(matches!(cell, MemoryCell::Valid(_, _)));

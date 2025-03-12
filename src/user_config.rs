@@ -101,6 +101,8 @@ pub struct UserConfig {
     pub duration: f64,
     /// The warm-up period, in s.
     pub warmup_period: f64,
+    /// Time series metrics to ignore.
+    pub series_ignore: std::collections::HashSet<String>,
     /// The physical topology configuration.
     pub physical_topology: PhysicalTopology,
     /// The logical topology configuration.
@@ -112,6 +114,7 @@ impl Default for UserConfig {
         Self {
             duration: 10.0,
             warmup_period: 1.0,
+            series_ignore: std::collections::HashSet::new(),
             physical_topology: PhysicalTopology::ConfGridStatic(ConfGridStatic::default()),
             logical_topology: LogicalTopology::default(),
         }

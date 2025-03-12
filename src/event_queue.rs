@@ -17,13 +17,6 @@ impl EventQueue {
         self.queue.push(event);
     }
 
-    /// Add all the events to the event queue.
-    pub fn push_many(&mut self, events: Vec<Event>) {
-        for event in events {
-            self.push(event);
-        }
-    }
-
     /// Return the next event, if any.
     pub fn pop(&mut self) -> Option<Event> {
         let last_event = self.queue.pop();
