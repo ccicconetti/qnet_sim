@@ -52,16 +52,10 @@ impl Simulation {
     pub fn new(config: crate::config::Config, save_to_dot: bool) -> anyhow::Result<Self> {
         anyhow::ensure!(config.user_config.duration > 0.0, "vanishing duration");
 
-        let physical_topology = match &config.user_config.physical_topology {
-            crate::user_config::PhysicalTopology::ConfGridStatic(conf) => {
-                crate::physical_topology::PhysicalTopology::from_grid_static(
-                    conf.grid_params.clone(),
-                    conf.sat_weight.clone(),
-                    conf.ogs_weight.clone(),
-                    conf.fidelities.clone(),
-                )?
-            }
-        };
+        let physical_topology = config
+            .user_config
+            .physical_topology
+            .to_physical_topology()?;
 
         let mut rng = rand::rngs::StdRng::seed_from_u64(config.seed);
         let logical_topology = crate::logical_topology::LogicalTopology::from_physical_topology(

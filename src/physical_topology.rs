@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: © 2025 Claudio Cicconetti <c.cicconetti@iit.cnr.it>
 // SPDX-License-Identifier: MIT
 
+use anyhow::Chain;
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum NodeType {
     /// Satellite node.
@@ -224,6 +226,16 @@ impl Default for GridParams {
     }
 }
 
+fn err_if_not_empty(errors: &Vec<String>) -> anyhow::Result<()> {
+    if !errors.is_empty() {
+        anyhow::bail!(
+            "invalid physical topology grid parameters: {}",
+            errors.join(",")
+        )
+    }
+    Ok(())
+}
+
 impl GridParams {
     fn valid(&self) -> anyhow::Result<()> {
         let mut errors = vec![];
@@ -245,13 +257,49 @@ impl GridParams {
         if self.orbit_length == 0 {
             errors.push(String::from("vanishing orbit length"));
         }
-        if !errors.is_empty() {
-            anyhow::bail!(
-                "invalid physical topology grid parameters: {}",
-                errors.join(",")
-            )
+        err_if_not_empty(&errors)
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ChainParams {
+    /// Distance between two neighbor satellites, in m.
+    pub orbit_to_orbit_distance: f64,
+    /// Distance between an OGS and a satellite, in m.
+    pub ground_to_orbit_distance: f64,
+    /// Number of satellite repeaters.
+    pub num_repeaters: u32,
+}
+
+impl Default for ChainParams {
+    fn default() -> Self {
+        Self {
+            orbit_to_orbit_distance: 3000.0,
+            ground_to_orbit_distance: 1000.0,
+            num_repeaters: 1,
         }
-        Ok(())
+    }
+}
+
+impl ChainParams {
+    fn valid(&self) -> anyhow::Result<()> {
+        let mut errors = vec![];
+        if self.orbit_to_orbit_distance < 0.0 {
+            errors.push(format!(
+                "orbit-to-orbit distance ({}) < 0",
+                self.orbit_to_orbit_distance
+            ))
+        }
+        if self.ground_to_orbit_distance < 0.0 {
+            errors.push(format!(
+                "ground-to-orbit distance ({}) < 0",
+                self.ground_to_orbit_distance
+            ))
+        }
+        if self.num_repeaters == 0 {
+            errors.push(String::from("vanishing number of repeaters"));
+        }
+        err_if_not_empty(&errors)
     }
 }
 
@@ -395,6 +443,81 @@ impl PhysicalTopology {
                         graph.add_edge(ndx.into(), sat_ndx.into(), ground_weight);
                     }
                 }
+            }
+        }
+
+        Ok(Self {
+            graph,
+            fidelities,
+            paths: std::collections::HashMap::new(),
+        })
+    }
+
+    /// Build a physical topology consisting of an linear chain of repeaters,
+    /// with one OGS at each end.
+
+    /// All the satellite and ground nodes have the same given characteristics.
+    /// and static fidelities.
+    pub fn from_chain_static(
+        chain_params: ChainParams,
+        sat_weight: NodeWeight,
+        ogs_weight: NodeWeight,
+        fidelities: StaticFidelities,
+    ) -> anyhow::Result<Self> {
+        chain_params.valid()?;
+        sat_weight.valid()?;
+        assert!(sat_weight.node_type == NodeType::SAT);
+        ogs_weight.valid()?;
+        assert!(ogs_weight.node_type == NodeType::OGS);
+        fidelities.valid()?;
+
+        let mut graph = petgraph::Graph::new_undirected();
+
+        // Add OGS nodes.
+        for _ in 0..2 {
+            graph.add_node(ogs_weight.clone());
+        }
+
+        // Add SAT nodes.
+        for _ in 0..chain_params.num_repeaters {
+            graph.add_node(sat_weight.clone());
+        }
+
+        // Add edges.
+        for i in 0..chain_params.num_repeaters {
+            let ndx = 2 + i;
+            assert!(ndx < graph.node_count() as u32);
+
+            // Left-most satellite: connect to left-side OGS.
+            if i == 0 {
+                graph.add_edge(
+                    ndx.into(),
+                    0.into(),
+                    EdgeWeight {
+                        distance: chain_params.ground_to_orbit_distance,
+                    },
+                );
+            }
+
+            // Right-most satellite.
+            if i == (chain_params.num_repeaters - 1) {
+                // Connect to right-side OGS.
+                graph.add_edge(
+                    ndx.into(),
+                    1.into(),
+                    EdgeWeight {
+                        distance: chain_params.ground_to_orbit_distance,
+                    },
+                );
+            } else {
+                // Connect to right-hand satellite.
+                graph.add_edge(
+                    ndx.into(),
+                    (ndx + 1).into(),
+                    EdgeWeight {
+                        distance: chain_params.orbit_to_orbit_distance,
+                    },
+                );
             }
         }
 
@@ -555,7 +678,7 @@ impl PhysicalTopology {
 
 #[cfg(test)]
 mod tests {
-    use crate::physical_topology::{GridParams, NodeWeight};
+    use crate::physical_topology::{ChainParams, GridParams, NodeWeight};
 
     use super::{NodeType, PhysicalTopology, StaticFidelities};
 
@@ -756,6 +879,45 @@ mod tests {
         assert_float_eq::assert_f64_near!(2000.0, graph.distance(0, 4).unwrap());
         assert_float_eq::assert_f64_near!(4000.0, graph.distance(0, 11).unwrap());
         assert_float_eq::assert_f64_near!(6000.0, graph.distance(12, 26).unwrap());
+    }
+
+    #[test]
+    fn test_physical_topology_from_chain() {
+        // Invalid params.
+        assert!(PhysicalTopology::from_chain_static(
+            ChainParams {
+                orbit_to_orbit_distance: 3000.0,
+                ground_to_orbit_distance: 1000.0,
+                num_repeaters: 0,
+            },
+            NodeWeight::default_sat(),
+            NodeWeight::default_ogs(),
+            StaticFidelities::default(),
+        )
+        .is_err());
+
+        // Valid 4-satellite chain.
+        let mut graph = PhysicalTopology::from_chain_static(
+            ChainParams {
+                orbit_to_orbit_distance: 3000.0,
+                ground_to_orbit_distance: 1000.0,
+                num_repeaters: 4,
+            },
+            NodeWeight::default_sat(),
+            NodeWeight::default_ogs(),
+            StaticFidelities::default(),
+        )
+        .unwrap();
+
+        assert_eq!((2..6).collect::<Vec<u32>>(), graph.sat_indices());
+        assert_eq!((0..2).collect::<Vec<u32>>(), graph.ogs_indices());
+        assert_eq!(6, graph.graph().node_count());
+        println!("{}", petgraph::dot::Dot::new(&graph.graph));
+        assert_float_eq::assert_f64_near!(11000.0, graph.distance(0, 1).unwrap());
+        assert_float_eq::assert_f64_near!(1000.0, graph.distance(0, 2).unwrap());
+        assert_float_eq::assert_f64_near!(4000.0, graph.distance(0, 3).unwrap());
+        assert_float_eq::assert_f64_near!(7000.0, graph.distance(0, 4).unwrap());
+        assert_float_eq::assert_f64_near!(10000.0, graph.distance(0, 5).unwrap());
     }
 
     #[test]
