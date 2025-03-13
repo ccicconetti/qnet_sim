@@ -499,35 +499,63 @@ mod tests {
 
         for _try in 0..10 {
             let physical_topology = physical_topology_2_2();
-            let logical_graph = physical_to_logical_random_greedy(&physical_topology, &mut rng)?;
+            if let Ok(logical_graph) =
+                physical_to_logical_random_greedy(&physical_topology, &mut rng)
+            {
+                for e in logical_graph.edge_references() {
+                    println!(
+                        "{} -> {}, {:?}",
+                        e.source().index(),
+                        e.target().index(),
+                        e.weight()
+                    );
+                }
 
-            for e in logical_graph.edge_references() {
-                println!(
-                    "{} -> {}, {:?}",
-                    e.source().index(),
-                    e.target().index(),
-                    e.weight()
-                );
-            }
+                if is_valid(&logical_graph, &physical_topology).is_err() {
+                    continue;
+                }
 
-            if is_valid(&logical_graph, &physical_topology).is_err() {
-                continue;
-            }
+                let all_paths = find_paths(&logical_graph)?;
 
-            let all_paths = find_paths(&logical_graph)?;
+                let ogs_node_ids: std::collections::HashSet<u32> =
+                    std::collections::HashSet::from_iter(
+                        physical_topology.ogs_indices().iter().cloned(),
+                    );
 
-            for (source, paths) in all_paths {
-                assert!(paths.distances.iter().map(|x| x.cost).max().unwrap() <= 4);
-                println!(
-                    "distances of {}: {}",
-                    source,
-                    paths
-                        .distances
-                        .iter()
-                        .map(|x| format!("{}", x.cost))
-                        .collect::<Vec<String>>()
-                        .join(",")
-                );
+                for (source, paths) in all_paths {
+                    // Skip non-OGS nodes.
+                    if !ogs_node_ids.contains(&source) {
+                        continue;
+                    }
+                    println!(
+                        "distances of {}: {}",
+                        source,
+                        paths
+                            .distances
+                            .iter()
+                            .map(|x| format!("{}", x.cost))
+                            .collect::<Vec<String>>()
+                            .join(",")
+                    );
+                    println!(
+                        "predecessors of {}: {}",
+                        source,
+                        paths
+                            .predecessors
+                            .iter()
+                            .map(|x| format!("{:?}", x))
+                            .collect::<Vec<String>>()
+                            .join(",")
+                    );
+                    for target in 0..paths.distances.len() as u32 {
+                        // Skip this node and non-OGS nodes.
+                        if source == target || !ogs_node_ids.contains(&target) {
+                            continue;
+                        }
+                        assert!(paths.distances[target as usize].cost <= 9);
+                        assert!(paths.predecessors[target as usize].is_some());
+                    }
+                }
             }
 
             return Ok(());

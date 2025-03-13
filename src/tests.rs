@@ -43,16 +43,18 @@ pub fn logical_topology_2_2() -> (
 
     for _try in 0..num_tries {
         let physical_topology = physical_topology_2_2();
-        let logical_topology = crate::logical_topology::LogicalTopology::from_physical_topology(
-            &crate::logical_topology::PhysicalToLogicalPolicy::RandomGreedy,
-            &physical_topology,
-            &mut rng,
-        )
-        .expect("could not derive logical graph from physical topology");
-
-        if crate::logical_topology::is_valid(&logical_topology.graph(), &physical_topology).is_ok()
+        if let Ok(logical_topology) =
+            crate::logical_topology::LogicalTopology::from_physical_topology(
+                &crate::logical_topology::PhysicalToLogicalPolicy::RandomGreedy,
+                &physical_topology,
+                &mut rng,
+            )
         {
-            return (physical_topology, logical_topology);
+            if crate::logical_topology::is_valid(&logical_topology.graph(), &physical_topology)
+                .is_ok()
+            {
+                return (physical_topology, logical_topology);
+            }
         }
     }
     panic!(

@@ -2,15 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 use rand::SeedableRng;
-
-use crate::{output::Sample, utils::CsvFriend};
 use std::io::Write;
 
 use crate::event::{Event, EventHandler, EventType};
+use crate::{output::Sample, utils::CsvFriend};
 
 pub struct Simulation {
     // internal data structures
-    logical_topology: crate::logical_topology::LogicalTopology,
     network: crate::network::Network,
     events: crate::event_queue::EventQueue,
     single: crate::output::OutputSingle,
@@ -49,6 +47,41 @@ where
 }
 
 impl Simulation {
+    fn create_network(
+        config: &crate::config::Config,
+        physical_topology: crate::physical_topology::PhysicalTopology,
+        save_to_dot: bool,
+    ) -> crate::network::Network {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(config.seed);
+
+        let logical_topology = if let Ok(logical_topology) =
+            crate::logical_topology::LogicalTopology::from_physical_topology(
+                &config
+                    .user_config
+                    .logical_topology
+                    .physical_to_logical_policy,
+                &physical_topology,
+                &mut rng,
+            ) {
+            if crate::logical_topology::is_valid(logical_topology.graph(), &physical_topology)
+                .is_ok()
+            {
+                log::debug!("{:#?}", logical_topology.graph());
+
+                if save_to_dot {
+                    let _ = save_to_dot_file(logical_topology.graph(), "logical_topology.dot");
+                }
+
+                logical_topology
+            } else {
+                crate::logical_topology::LogicalTopology::default()
+            }
+        } else {
+            crate::logical_topology::LogicalTopology::default()
+        };
+        crate::network::Network::new(&logical_topology, physical_topology, config.seed)
+    }
+
     pub fn new(config: crate::config::Config, save_to_dot: bool) -> anyhow::Result<Self> {
         anyhow::ensure!(config.user_config.duration > 0.0, "vanishing duration");
 
@@ -57,30 +90,18 @@ impl Simulation {
             .physical_topology
             .to_physical_topology()?;
 
-        let mut rng = rand::rngs::StdRng::seed_from_u64(config.seed);
-        let logical_topology = crate::logical_topology::LogicalTopology::from_physical_topology(
-            &config
-                .user_config
-                .logical_topology
-                .physical_to_logical_policy,
-            &physical_topology,
-            &mut rng,
-        )?;
-
-        crate::logical_topology::is_valid(logical_topology.graph(), &physical_topology)?;
-
         if save_to_dot {
             save_to_dot_file(physical_topology.graph(), "physical_topology.dot")?;
-            save_to_dot_file(logical_topology.graph(), "logical_topology.dot")?;
-            anyhow::bail!("saved to Dot files");
         }
 
-        let network =
-            crate::network::Network::new(&logical_topology, physical_topology, config.seed);
+        let network = Self::create_network(&config, physical_topology, save_to_dot);
+
+        // Save to Graphviz files and terminate immediately.
+        anyhow::ensure!(!save_to_dot, "saved to Dot files");
+
         let series = crate::output::OutputSeries::new(config.user_config.series_ignore.clone());
 
         Ok(Self {
-            logical_topology,
             network,
             config,
             events: crate::event_queue::EventQueue::default(),
@@ -111,8 +132,6 @@ impl Simulation {
     pub fn run(&mut self) -> crate::output::Output {
         let conf = &self.config.user_config;
 
-        log::debug!("{:#?}", self.logical_topology.graph());
-
         // push initial events
         self.events
             .push(Event::new(conf.warmup_period, EventType::WarmupPeriodEnd));
@@ -125,12 +144,15 @@ impl Simulation {
             ));
         }
         let initial_network_events = self.network.initial();
+        let logical_topology_found = if initial_network_events.is_empty() {
+            0.0_f64
+        } else {
+            1.0_f64
+        };
         self.update(initial_network_events, vec![]);
 
         // initialize simulated time and ID of the first job
         let mut now;
-
-        // configure random variables
 
         // metrics
         let mut num_events = 0;
@@ -182,6 +204,8 @@ impl Simulation {
         }
 
         // save final metrics
+        self.single
+            .one_time("logical_topology_found", logical_topology_found);
         self.single.one_time("num_events", num_events as f64);
         self.single
             .one_time("execution_time", real_now.elapsed().as_secs_f64());
