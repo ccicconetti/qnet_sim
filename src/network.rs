@@ -5,10 +5,8 @@ use petgraph::visit::EdgeRef;
 use rand::SeedableRng;
 use rand_distr::Distribution;
 
-use crate::{
-    event::{EprGeneratedData, EprNotifiedData, Event, EventType, NodeEventData},
-    output::Sample,
-};
+use crate::event::*;
+use crate::output::Sample;
 
 #[derive(Debug)]
 pub struct EprGenerator {
@@ -22,7 +20,7 @@ pub struct EprGenerator {
 
 impl EprGenerator {
     /// Schedule the next EPR generation.
-    fn handle(&mut self) -> crate::event::Event {
+    fn handle(&mut self) -> Event {
         let next_epr_generation = self.rv.sample(&mut self.rng);
         Event::new(
             next_epr_generation,
@@ -214,7 +212,7 @@ impl Network {
     }
 }
 
-impl crate::event::EventHandler for Network {
+impl EventHandler for Network {
     fn handle(&mut self, event: Event) -> (Vec<Event>, Vec<Sample>) {
         let now = event.time();
         match event.event_type {

@@ -27,6 +27,65 @@ pub enum NodeEventData {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+pub struct EprFiveTuple {
+    /// Source node ID.
+    pub source_node_id: u32,
+    /// Source port.
+    pub source_port: u16,
+    /// Target node ID.
+    pub target_node_id: u32,
+    /// Target port.
+    pub target_port: u16,
+    /// Request ID
+    pub request_id: u64,
+}
+
+impl std::fmt::Display for EprFiveTuple {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "src {}:{} dst {}:{} id {}",
+            self.source_node_id,
+            self.source_port,
+            self.target_node_id,
+            self.target_port,
+            self.request_id
+        )
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct EprResponseData {
+    /// Source node ID.
+    pub source_node_id: u32,
+    /// Source port.
+    pub source_port: u16,
+    /// Request ID
+    pub request_id: u64,
+    /// Neighbor node ID, used to identify the NIC, and memory cell index.
+    /// If None then the request failed.
+    pub memory_cell: Option<(u32, usize)>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum OsEventData {
+    /// New EPR request requested by an app, identified by the five tuple
+    EprRequestApp(EprFiveTuple),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum AppEventData {
+    /// New EPR request needed by an app, identified by node ID and port.
+    EprRequest(u32, u16),
+    /// EPR request response from the OS.
+    EprResponse(EprResponseData),
+    /// Local operations complete for a given EPR request.
+    LocalComplete(u32, u16, u64),
+    /// Remote operations complete for a given EPR request.
+    RemoteComplete(u32, u16, u64),
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub enum EventType {
     /// The warm-up period expires.
     WarmupPeriodEnd,
@@ -37,6 +96,10 @@ pub enum EventType {
 
     /// Node-related event.
     NodeEvent(NodeEventData),
+    /// OS-related event.
+    OsEvent(OsEventData),
+    /// Application-related event.
+    AppEvent(AppEventData),
 }
 
 /// A simulation event.

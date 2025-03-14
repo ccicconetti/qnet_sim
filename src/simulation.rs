@@ -131,18 +131,14 @@ impl Simulation {
     /// Run a simulation.
     pub fn run(&mut self) -> crate::output::Output {
         let conf = &self.config.user_config;
+        let conf_100th = conf.duration / 100.0;
 
         // push initial events
         self.events
             .push(Event::new(conf.warmup_period, EventType::WarmupPeriodEnd));
         self.events
             .push(Event::new(conf.duration, EventType::ExperimentEnd));
-        for i in 1..100 {
-            self.events.push(Event::new(
-                i as f64 * conf.duration / 100.0,
-                EventType::Progress(i),
-            ));
-        }
+        self.events.push(Event::new(0.0, EventType::Progress(0)));
         let initial_network_events = self.network.initial();
         let logical_topology_found = if initial_network_events.is_empty() {
             0.0_f64
@@ -176,11 +172,12 @@ impl Simulation {
                 num_events += 1;
 
                 // handle the current event
-                match &event.event_type {
+                let (new_events, new_samples) = match &event.event_type {
                     EventType::WarmupPeriodEnd => {
                         log::debug!("W {}", now);
                         self.single.enable(now);
                         self.series.enable();
+                        (vec![], vec![])
                     }
                     EventType::ExperimentEnd => {
                         log::debug!("E {}", now);
@@ -188,13 +185,25 @@ impl Simulation {
                     }
                     EventType::Progress(percentage) => {
                         log::info!("completed {}%", percentage);
+                        (
+                            vec![Event::new(conf_100th, EventType::Progress(percentage + 1))],
+                            vec![],
+                        )
                     }
                     EventType::NodeEvent(event_data) => {
                         log::debug!("N {} {:?}", now, event_data);
-                        let (new_events, new_samples) = self.network.handle(event);
-                        self.update(new_events, new_samples);
+                        self.network.handle(event)
                     }
-                }
+                    EventType::OsEvent(event_data) => {
+                        log::debug!("O {} {:?}", now, event_data);
+                        self.network.handle(event)
+                    }
+                    EventType::AppEvent(event_data) => {
+                        log::debug!("A {} {:?}", now, event_data);
+                        self.network.handle(event)
+                    }
+                };
+                self.update(new_events, new_samples);
             }
         }
 
