@@ -6,7 +6,7 @@ use rand::SeedableRng;
 use rand_distr::Distribution;
 
 use crate::{
-    event::{EprGeneratedData, EprNotifiedData, Event, EventType},
+    event::{EprGeneratedData, EprNotifiedData, Event, EventType, NodeEventData},
     output::Sample,
 };
 
@@ -26,11 +26,11 @@ impl EprGenerator {
         let next_epr_generation = self.rv.sample(&mut self.rng);
         Event::new(
             next_epr_generation,
-            EventType::EprGenerated(EprGeneratedData {
+            EventType::NodeEvent(NodeEventData::EprGenerated(EprGeneratedData {
                 tx_node_id: self.tx_node_id,
                 master_node_id: self.master_node_id,
                 slave_node_id: self.slave_node_id,
-            }),
+            })),
         )
     }
 }
@@ -143,21 +143,21 @@ impl Network {
                     // on the master/slave nodes.
                     events.push(Event::new(
                         0.0_f64,
-                        EventType::EprNotified(EprNotifiedData {
+                        EventType::NodeEvent(NodeEventData::EprNotified(EprNotifiedData {
                             this_node_id: data.master_node_id,
                             peer_node_id: data.slave_node_id,
                             role: crate::nic::Role::Master,
                             epr_pair_id,
-                        }),
+                        })),
                     ));
                     events.push(Event::new(
                         0.0_f64,
-                        EventType::EprNotified(EprNotifiedData {
+                        EventType::NodeEvent(NodeEventData::EprNotified(EprNotifiedData {
                             this_node_id: data.slave_node_id,
                             peer_node_id: data.master_node_id,
                             role: crate::nic::Role::Slave,
                             epr_pair_id,
-                        }),
+                        })),
                     ));
                 }
 
@@ -218,8 +218,10 @@ impl crate::event::EventHandler for Network {
     fn handle(&mut self, event: Event) -> (Vec<Event>, Vec<Sample>) {
         let now = event.time();
         match event.event_type {
-            EventType::EprGenerated(data) => self.handle_epr_generated(now, data),
-            EventType::EprNotified(data) => self.handle_epr_notified(now, data),
+            EventType::NodeEvent(data) => match data {
+                NodeEventData::EprGenerated(data) => self.handle_epr_generated(now, data),
+                NodeEventData::EprNotified(data) => self.handle_epr_notified(now, data),
+            },
             _ => panic!(
                 "invalid event {:?} received by a Network object",
                 event.event_type

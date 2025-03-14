@@ -189,12 +189,7 @@ impl Simulation {
                     EventType::Progress(percentage) => {
                         log::info!("completed {}%", percentage);
                     }
-                    EventType::EprGenerated(event_data) => {
-                        log::debug!("G {} {:?}", now, event_data);
-                        let (new_events, new_samples) = self.network.handle(event);
-                        self.update(new_events, new_samples);
-                    }
-                    EventType::EprNotified(event_data) => {
+                    EventType::NodeEvent(event_data) => {
                         log::debug!("N {} {:?}", now, event_data);
                         let (new_events, new_samples) = self.network.handle(event);
                         self.update(new_events, new_samples);
