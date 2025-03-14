@@ -45,12 +45,20 @@ impl Node {
         role: super::nic::Role,
         epr_pair_id: u64,
     ) -> f64 {
-        let nic = self
-            .nics(&role)
-            .get_mut(&peer_node_id)
-            .unwrap_or_else(|| panic!("could not find NIC for peer {}", peer_node_id));
+        let nic = self.get_nic(peer_node_id, &role);
         nic.add_epr_pair(now, epr_pair_id);
         nic.occupancy()
+    }
+
+    /// Consume the qubit of an EPR stored in a memory cell in one of the NICs.
+    /// Return the creation time and identifier.
+    pub fn consume(
+        &mut self,
+        peer_node_id: u32,
+        role: &super::nic::Role,
+        index: usize,
+    ) -> Option<(u64, u64)> {
+        self.get_nic(peer_node_id, role).consume(index)
     }
 
     /// Return the right set of NICs depending on the role.
@@ -62,5 +70,12 @@ impl Node {
             super::nic::Role::Master => &mut self.nics_master,
             super::nic::Role::Slave => &mut self.nics_slave,
         }
+    }
+
+    /// Return the NIC for a given peer node and role.
+    fn get_nic(&mut self, peer_node_id: u32, role: &super::nic::Role) -> &mut super::nic::Nic {
+        self.nics(role)
+            .get_mut(&peer_node_id)
+            .unwrap_or_else(|| panic!("could not find NIC for peer {} ({:?})", peer_node_id, role))
     }
 }

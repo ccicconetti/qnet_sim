@@ -11,19 +11,16 @@ struct EprRequest {
     /// Neighbor node ID, used to identify the NIC, and memory cell index.
     /// If None then the application is still waiting for the OS to indicate
     /// if the EPR was established or not.
-    memory_cell: Option<(u32, usize)>,
+    memory_cell: Option<(u32, crate::nic::Role, usize)>,
     /// True if the local operations have been done.
     local_operations_done: bool,
     /// True if the remote operations have been done.
     remote_operations_done: bool,
 }
 
-/// Every EPR request is uniquely identified by the five-tuple:
-/// source node ID and port
-/// target node ID and port
-/// request ID
+/// Client application.
 #[derive(Debug)]
-pub struct Application {
+pub struct Client {
     /// Source node ID.
     this_node_id: u32,
     /// Source port.
@@ -44,26 +41,20 @@ pub struct Application {
     pending: std::collections::HashMap<u64, EprRequest>,
 }
 
-impl Application {
-    fn get_request(
-        &mut self,
-        source_node_id: u32,
-        source_port: u16,
-        request_id: u64,
-    ) -> &mut EprRequest {
-        assert_eq!(source_node_id, self.this_node_id);
-        assert_eq!(source_port, self.this_port);
+impl Client {
+    fn get_request(&mut self, epr: &EprFiveTuple) -> &mut EprRequest {
+        assert_eq!(epr.source_node_id, self.this_node_id);
+        assert_eq!(epr.source_port, self.this_port);
+        assert_eq!(epr.target_node_id, self.peer_node_id);
+        assert_eq!(epr.target_port, self.peer_port);
 
-        self.pending.get_mut(&request_id).unwrap_or_else(|| {
-            panic!(
-                "non-existing pending request {} at application {}:{}",
-                request_id, self.this_node_id, self.this_port
-            )
-        })
+        self.pending
+            .get_mut(&epr.request_id)
+            .unwrap_or_else(|| panic!("non-existing pending request {}", epr))
     }
 }
 
-impl EventHandler for Application {
+impl EventHandler for Client {
     fn handle(&mut self, event: Event) -> (Vec<Event>, Vec<Sample>) {
         let mut events = vec![];
         let mut samples = vec![];
@@ -106,15 +97,14 @@ impl EventHandler for Application {
                     ));
                 }
                 AppEventData::EprResponse(data) => {
-                    let request =
-                        self.get_request(data.source_node_id, data.source_port, data.request_id);
+                    let request = self.get_request(&data.epr);
 
                     assert!(
                         request.memory_cell.is_none(),
                         "duplicate response received for request {} at application {}:{}",
-                        data.request_id,
-                        self.this_node_id,
-                        self.this_port
+                        data.epr.request_id,
+                        data.epr.source_port,
+                        data.epr.request_id,
                     );
 
                     if let Some(memory_cell) = data.memory_cell {
@@ -123,37 +113,54 @@ impl EventHandler for Application {
 
                         // Start timer for local operations.
                         events.push(Event::new(
-                            self.rv_local_ops.sample(&mut self.rng), // XXX
-                            EventType::AppEvent(AppEventData::LocalComplete(
-                                self.this_node_id,
-                                self.this_port,
-                                data.request_id,
-                            )),
+                            self.rv_local_ops.sample(&mut self.rng),
+                            EventType::AppEvent(AppEventData::LocalComplete(data.epr)),
                         ));
                     } else {
-                        self.pending.remove(&data.request_id);
+                        self.pending.remove(&data.epr.request_id);
                     }
                 }
-                AppEventData::LocalComplete(source_node_id, source_port, request_id) => {
-                    let request = self.get_request(source_node_id, source_port, request_id);
+                AppEventData::LocalComplete(epr) => {
+                    let request = self.get_request(&epr);
 
-                    assert!(request.local_operations_done, "duplicate execution of local operations for request {} at application {}:{}",request_id, self.this_node_id, self.this_port);
+                    assert!(
+                        request.local_operations_done,
+                        "duplicate execution of local operations for request {}",
+                        epr
+                    );
                     request.local_operations_done = true;
 
                     if request.remote_operations_done {
-                        // Compute fidelity XXX
-                        self.pending.remove(&request_id);
+                        let memory_cell = std::mem::take(&mut request.memory_cell);
+                        let (neighbor_node_id, role, index) = memory_cell.unwrap_or_else(|| {
+                            panic!("local operation completed on a failed request {}", epr)
+                        });
+                        events.push(Event::new(
+                            0.0,
+                            EventType::NodeEvent(NodeEventData::EprFidelity(EprFidelityData {
+                                app_node_id: self.this_node_id,
+                                port: self.this_port,
+                                consume_node_id: self.this_node_id,
+                                neighbor_node_id,
+                                role,
+                                index,
+                            })),
+                        ));
+                        self.pending.remove(&epr.request_id);
                     }
                 }
-                AppEventData::RemoteComplete(source_node_id, source_port, request_id) => {
-                    let request = self.get_request(source_node_id, source_port, request_id);
+                AppEventData::RemoteComplete(epr) => {
+                    let request = self.get_request(&epr);
 
-                    assert!(request.remote_operations_done, "duplicate execution of remote operations for request {} at application {}:{}",request_id, self.this_node_id, self.this_port);
+                    assert!(
+                        request.remote_operations_done,
+                        "duplicate execution of remote operations for request {}",
+                        epr
+                    );
                     request.remote_operations_done = true;
 
                     if request.local_operations_done {
-                        // Compute fidelity XXX
-                        self.pending.remove(&request_id);
+                        self.pending.remove(&epr.request_id);
                     }
                 }
             },

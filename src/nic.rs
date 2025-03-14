@@ -31,7 +31,7 @@ impl Ord for MemoryCell {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Role {
     Master,
     Slave,
@@ -71,6 +71,27 @@ impl Nic {
         }
     }
 
+    /// Consume an EPR pair. Return empty if the index is invalid or the memory
+    /// cell is empty, otherwise return the creation time and EPR pair ID.
+    pub fn consume(&mut self, index: usize) -> Option<(u64, u64)> {
+        let ret = if index < self.memory_cells.len() {
+            if let MemoryCell::Valid(creation_time, id) = self.memory_cells[index] {
+                Some((creation_time, id))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        // If the memory cell was valid, make it empty.
+        if ret.is_some() {
+            self.memory_cells[index] = MemoryCell::Empty;
+        }
+
+        ret
+    }
+
     /// Return the occupancy of the NIC, i.e., the number of non-empty memory
     /// cells divided by the total number of cells.
     pub fn occupancy(&mut self) -> f64 {
@@ -93,7 +114,7 @@ mod tests {
     use super::{Nic, Role};
 
     #[test]
-    fn test_nic_add_epr_pair() {
+    fn test_nic_add_consume_epr_pairs() {
         let mut nic = Nic::new(Role::Master, 10);
 
         for cell in &nic.memory_cells {
@@ -113,6 +134,27 @@ mod tests {
             assert!(matches!(cell, MemoryCell::Valid(_, _)));
         }
 
+        // Consume all the EPR pairs.
+        assert!(nic.consume(10).is_none());
+        for i in 0..10_u64 {
+            let (updated, id) = nic.consume(i as usize).unwrap();
+
+            assert_eq!(i + 100, updated);
+            assert_eq!(i, id);
+
+            assert_float_eq::assert_f64_near!(1.0 - 0.1 * (i + 1) as f64, nic.occupancy());
+        }
+
+        for cell in &nic.memory_cells {
+            assert!(matches!(cell, MemoryCell::Empty));
+        }
+
+        // Re-add them all.
+        for i in 0..10 {
+            nic.add_epr_pair(i + 100, i);
+        }
+
+        // Plus a new one.
         nic.add_epr_pair(999, 42);
 
         for cell in &nic.memory_cells {
