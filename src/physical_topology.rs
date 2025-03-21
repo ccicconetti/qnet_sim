@@ -453,7 +453,7 @@ impl PhysicalTopology {
 
     /// Build a physical topology consisting of an linear chain of repeaters,
     /// with one OGS at each end.
-
+    ///
     /// All the satellite and ground nodes have the same given characteristics.
     /// and static fidelities.
     pub fn from_chain_static(

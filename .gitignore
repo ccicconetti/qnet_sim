@@ -24,3 +24,4 @@ conf*.json
 *.dot
 *.pdf
 *.csv
+docs/.$diagrams.drawio.bkp
