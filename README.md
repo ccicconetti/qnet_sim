@@ -1,2 +1,4 @@
-# qnet_ll_sim
-Quantum network link-level simulator of end-to-end entanglement and purification
+# qnet_sim
+
+Quantum network simulator focused on modeling network-level protocols and
+their interactions with networked quantum applications.
