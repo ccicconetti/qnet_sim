@@ -48,7 +48,7 @@ pub enum NodeEventData {
 /// - source node ID and port
 /// - target node ID and port
 /// - request ID
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EprFiveTuple {
     /// Source node ID.
     pub source_node_id: u32,
@@ -60,6 +60,24 @@ pub struct EprFiveTuple {
     pub target_port: u16,
     /// Request ID
     pub request_id: u64,
+}
+
+impl EprFiveTuple {
+    pub fn new(
+        source_node_id: u32,
+        source_port: u16,
+        target_node_id: u32,
+        target_port: u16,
+        request_id: u64,
+    ) -> Self {
+        Self {
+            source_node_id,
+            source_port,
+            target_node_id,
+            target_port,
+            request_id,
+        }
+    }
 }
 
 impl std::fmt::Display for EprFiveTuple {

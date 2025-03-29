@@ -304,9 +304,16 @@ mod tests {
     fn test_expo_rv() {
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
         let rv = rand_distr::Exp::new(10.0).unwrap();
-        for _ in 0..10 {
+        let mut sum = 0.0;
+        for i in 0..100 {
             let x = rv.sample(&mut rng);
-            println!("{}", x);
+            sum += x;
+            if i % 5 == 4 {
+                println!("\t{}", x);
+            } else {
+                print!("\t{}", x);
+            }
         }
+        assert_float_eq::assert_f64_near!(0.1, (((sum / 100.0) * 10.0) as f64).round() / 10.0);
     }
 }

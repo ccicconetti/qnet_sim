@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: © 2025 Claudio Cicconetti <c.cicconetti@iit.cnr.it>
 // SPDX-License-Identifier: MIT
 
+use std::arch::aarch64::uint16x8x4_t;
+
+use rand::SeedableRng;
 use rand_distr::Distribution;
 
 use crate::event::*;
@@ -44,6 +47,43 @@ pub struct Client {
 }
 
 impl Client {
+    /// Create a new client application.
+    ///
+    /// Parameters:
+    /// - `this_node_id`: Source node ID.
+    /// - `this_port`: Source port.
+    /// - `peer_node_id`: Target node ID.
+    /// - `peer_port`: Target port.
+    /// - `seed`: Seed to initialize internal RNG.
+    /// - `operation_rate`: Rate at which a new EPR is requested, in s^-1.
+    /// - `operation_avg_dur`: Average duration of a local operatio, in s.
+    fn new(
+        this_node_id: u32,
+        this_port: u16,
+        peer_node_id: u32,
+        peer_port: u16,
+        seed: u64,
+        operation_rate: f64,
+        operation_avg_dur: f64,
+    ) -> Self {
+        let rng = rand::rngs::StdRng::seed_from_u64(seed);
+        let rv_next_epr =
+            rand_distr::Exp::new(operation_rate).expect("could not create an expo rv");
+        let rv_local_ops =
+            rand_distr::Exp::new(1.0 / operation_avg_dur).expect("could not create an expo rv");
+        Self {
+            this_node_id,
+            this_port,
+            peer_node_id,
+            peer_port,
+            next_request_id: 0,
+            rv_next_epr,
+            rv_local_ops,
+            rng,
+            pending: std::collections::HashMap::new(),
+        }
+    }
+
     fn get_request(&mut self, epr: &EprFiveTuple) -> &mut EprRequest {
         assert_eq!(epr.source_node_id, self.this_node_id);
         assert_eq!(epr.source_port, self.this_port);
@@ -53,6 +93,20 @@ impl Client {
         self.pending
             .get_mut(&epr.request_id)
             .unwrap_or_else(|| panic!("non-existing pending request {}", epr))
+    }
+
+    fn remove_request(&mut self, now: u64, request_id: u64) -> Vec<Sample> {
+        let epr_request = self.pending.remove(&request_id);
+
+        if let Some(epr_request) = epr_request {
+            vec![Sample::Series(
+                "latency-node,latency-port".to_string(),
+                format!("{},{}", self.this_node_id, self.this_port),
+                crate::utils::to_seconds(now - epr_request.created),
+            )]
+        } else {
+            vec![]
+        }
     }
 
     fn handle_epr_request(
@@ -136,72 +190,57 @@ impl Client {
 
     fn handle_local_complete(&mut self, now: u64, epr: EprFiveTuple) -> (Vec<Event>, Vec<Sample>) {
         let mut events = vec![];
-        let mut samples = vec![];
+
+        let this_node_id = self.this_node_id.clone();
+        let this_port = self.this_port.clone();
 
         let request = self.get_request(&epr);
 
         assert!(
-            request.local_operations_done,
+            !request.local_operations_done,
             "duplicate execution of local operations for request {}",
             epr
         );
         request.local_operations_done = true;
 
+        // Compute the fidelity on the local end of this EPR.
+        let memory_cell = std::mem::take(&mut request.memory_cell);
+        let (neighbor_node_id, role, index) = memory_cell
+            .unwrap_or_else(|| panic!("local operation completed on a failed request {}", epr));
+        events.push(Event::new(
+            0.0,
+            EventType::NodeEvent(NodeEventData::EprFidelity(EprFidelityData {
+                app_node_id: this_node_id,
+                port: this_port,
+                consume_node_id: this_node_id,
+                neighbor_node_id,
+                role,
+                index,
+            })),
+        ));
+
         if request.remote_operations_done {
-            let memory_cell = std::mem::take(&mut request.memory_cell);
-            let (neighbor_node_id, role, index) = memory_cell
-                .unwrap_or_else(|| panic!("local operation completed on a failed request {}", epr));
-            events.push(Event::new(
-                0.0,
-                EventType::NodeEvent(NodeEventData::EprFidelity(EprFidelityData {
-                    app_node_id: self.this_node_id,
-                    port: self.this_port,
-                    consume_node_id: self.this_node_id,
-                    neighbor_node_id,
-                    role,
-                    index,
-                })),
-            ));
-
-            let epr_request = self.pending.remove(&epr.request_id);
-
-            if let Some(epr_request) = epr_request {
-                samples.push(Sample::Series(
-                    "latency-node,latency-port".to_string(),
-                    format!("{},{}", self.this_node_id, self.this_port),
-                    crate::utils::to_seconds(now - epr_request.created),
-                ));
-            }
+            (events, self.remove_request(now, epr.request_id))
+        } else {
+            (events, vec![])
         }
-
-        (events, samples)
     }
 
     fn handle_remote_complete(&mut self, now: u64, epr: EprFiveTuple) -> (Vec<Event>, Vec<Sample>) {
-        let mut samples = vec![];
-
         let request = self.get_request(&epr);
 
         assert!(
-            request.remote_operations_done,
+            !request.remote_operations_done,
             "duplicate execution of remote operations for request {}",
             epr
         );
         request.remote_operations_done = true;
 
         if request.local_operations_done {
-            let epr_request = self.pending.remove(&epr.request_id);
-
-            if let Some(epr_request) = epr_request {
-                samples.push(Sample::Series(
-                    "latency-node,latency-port".to_string(),
-                    format!("{},{}", self.this_node_id, self.this_port),
-                    crate::utils::to_seconds(now - epr_request.created),
-                ));
-            }
+            (vec![], self.remove_request(now, epr.request_id))
+        } else {
+            (vec![], vec![])
         }
-
-        (vec![], samples)
     }
 }
 
@@ -235,8 +274,122 @@ impl EventHandler for Client {
 #[cfg(test)]
 mod tests {
 
+    use crate::event::AppEventData;
+    use crate::event::EprFiveTuple;
+    use crate::event::EprResponseData;
+    use crate::event::Event;
+    use crate::event::EventHandler;
+    use crate::event::EventType;
+    use crate::event::NodeEventData;
+    use crate::event::OsEventData;
+    use crate::nic;
+
+    use super::Client;
+
+    fn is_os_epr_request(event: &EventType) -> bool {
+        if let EventType::OsEvent(data) = event {
+            matches!(data, OsEventData::EprRequestApp(_))
+        } else {
+            false
+        }
+    }
+
+    fn is_app_epr_request(event: &EventType) -> bool {
+        if let EventType::AppEvent(data) = event {
+            matches!(data, AppEventData::EprRequest(_, _))
+        } else {
+            false
+        }
+    }
+
+    fn is_local_complete(event: &EventType, expected_five_tuple: &EprFiveTuple) -> bool {
+        if let EventType::AppEvent(data) = event {
+            if let AppEventData::LocalComplete(actual_five_tuple) = data {
+                expected_five_tuple == actual_five_tuple
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    }
+
+    fn is_node_epr_fidelity(event: &EventType) -> bool {
+        if let EventType::NodeEvent(data) = event {
+            matches!(data, NodeEventData::EprFidelity(_))
+        } else {
+            false
+        }
+    }
+
     #[test]
     fn test_client() {
-        // XXX
+        let this_node_id = 0;
+        let this_port = 50000;
+        let peer_node_id = 1;
+        let peer_port = 8080;
+        let mut client = Client::new(
+            this_node_id,
+            this_port,
+            peer_node_id,
+            peer_port,
+            42,
+            1.0,
+            0.1,
+        );
+
+        let events = client.initial();
+        assert_eq!(1, events.len());
+        assert!(is_app_epr_request(&events[0].event_type));
+
+        let events = client
+            .handle(Event::new(
+                1.0,
+                EventType::AppEvent(AppEventData::EprRequest(this_node_id, this_port)),
+            ))
+            .0;
+        assert_eq!(2, events.len());
+        assert!(is_os_epr_request(&events[0].event_type));
+        let five_tuple = if let EventType::OsEvent(data) = &events[0].event_type {
+            #[allow(irrefutable_let_patterns)]
+            if let OsEventData::EprRequestApp(five_tuple) = data {
+                five_tuple
+            } else {
+                panic!("wrong event sub-type");
+            }
+        } else {
+            panic!("wrong event type")
+        };
+
+        assert!(is_app_epr_request(&events[1].event_type));
+
+        let events = client
+            .handle(Event::new(
+                1.0,
+                EventType::AppEvent(AppEventData::EprResponse(EprResponseData {
+                    epr: five_tuple.clone(),
+                    memory_cell: Some((2, nic::Role::Master, 0)),
+                })),
+            ))
+            .0;
+        assert_eq!(1, events.len());
+        assert!(is_local_complete(&events[0].event_type, five_tuple));
+
+        let events = client
+            .handle(Event::new(
+                1.0,
+                EventType::AppEvent(AppEventData::LocalComplete(five_tuple.clone())),
+            ))
+            .0;
+        assert_eq!(1, events.len());
+        assert!(is_node_epr_fidelity(&events[0].event_type));
+
+        let events = client
+            .handle(Event::new(
+                1.0,
+                EventType::AppEvent(AppEventData::RemoteComplete(five_tuple.clone())),
+            ))
+            .0;
+        assert!(events.is_empty());
     }
 }
