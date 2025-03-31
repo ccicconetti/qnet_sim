@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: © 2025 Claudio Cicconetti <c.cicconetti@iit.cnr.it>
 // SPDX-License-Identifier: MIT
 
-use std::arch::aarch64::uint16x8x4_t;
-
 use rand::SeedableRng;
 use rand_distr::Distribution;
 
