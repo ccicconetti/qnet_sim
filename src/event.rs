@@ -22,7 +22,7 @@ pub struct EprNotifiedData {
 pub struct EprFidelityData {
     /// ID of the node where the application runs.
     pub app_node_id: u32,
-    /// Port where the application runes.
+    /// Port where the application runs.
     pub port: u16,
     /// ID of the node that consumes the EPR.
     pub consume_node_id: u32,
