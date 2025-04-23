@@ -55,6 +55,14 @@ impl Server {
         }
     }
 
+    fn pending_len_trace(&self) -> Sample {
+        Sample::Series(
+            "server_pending_len".to_string(),
+            format!("{}:{}", self.this_node_id, self.this_port),
+            self.pending.len() as f64,
+        )
+    }
+
     fn handle_epr_response(&mut self, data: EprResponseData) -> (Vec<Event>, Vec<Sample>) {
         assert!(
             data.epr.target_node_id == self.this_node_id,
@@ -88,11 +96,7 @@ impl Server {
                 EventType::AppEvent(AppEventData::LocalComplete(data.epr)),
             )],
             // Trace the queue of local operations.
-            vec![Sample::Series(
-                "server_pending_len".to_string(),
-                format!("{}:{}", self.this_node_id, self.this_port),
-                self.pending.len() as f64,
-            )],
+            vec![self.pending_len_trace()],
         )
     }
 
@@ -124,7 +128,7 @@ impl Server {
             })),
         ));
 
-        (events, vec![])
+        (events, vec![self.pending_len_trace()])
     }
 }
 

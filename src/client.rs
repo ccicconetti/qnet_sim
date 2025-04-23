@@ -97,14 +97,25 @@ impl Client {
         let epr_request = self.pending.remove(&request_id);
 
         if let Some(epr_request) = epr_request {
-            vec![Sample::Series(
-                "latency-node,latency-port".to_string(),
-                format!("{},{}", self.this_node_id, self.this_port),
-                crate::utils::to_seconds(now - epr_request.created),
-            )]
+            vec![
+                Sample::Series(
+                    "latency-node,latency-port".to_string(),
+                    format!("{},{}", self.this_node_id, self.this_port),
+                    crate::utils::to_seconds(now - epr_request.created),
+                ),
+                self.pending_len_trace(),
+            ]
         } else {
             vec![]
         }
+    }
+
+    fn pending_len_trace(&self) -> Sample {
+        Sample::Series(
+            "server_pending_len".to_string(),
+            format!("{}:{}", self.this_node_id, self.this_port),
+            self.pending.len() as f64,
+        )
     }
 
     fn handle_epr_request(
@@ -114,7 +125,6 @@ impl Client {
         port: u16,
     ) -> (Vec<Event>, Vec<Sample>) {
         let mut events = vec![];
-        let mut samples = vec![];
 
         assert!(self.this_node_id == node_id);
         assert!(self.this_port == port);
@@ -142,19 +152,13 @@ impl Client {
         );
         self.next_request_id += 1;
 
-        samples.push(Sample::Series(
-            "client_pending_len".to_string(),
-            format!("{}:{}", self.this_node_id, self.this_port),
-            self.pending.len() as f64,
-        ));
-
         // Generate a new EPR request for the application.
         events.push(Event::new(
             self.rv_next_epr.sample(&mut self.rng),
             EventType::AppEvent(AppEventData::EprRequest(self.this_node_id, self.this_port)),
         ));
 
-        (events, samples)
+        (events, vec![self.pending_len_trace()])
     }
 
     fn handle_epr_response(&mut self, data: EprResponseData) -> (Vec<Event>, Vec<Sample>) {
@@ -183,7 +187,7 @@ impl Client {
             self.pending.remove(&data.epr.request_id);
         }
 
-        (events, vec![])
+        (events, vec![self.pending_len_trace()])
     }
 
     fn handle_local_complete(&mut self, now: u64, epr: EprFiveTuple) -> (Vec<Event>, Vec<Sample>) {
