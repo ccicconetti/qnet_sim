@@ -54,7 +54,7 @@ impl Client {
     /// - `peer_port`: Target port.
     /// - `seed`: Seed to initialize internal RNG.
     /// - `operation_rate`: Rate at which a new EPR is requested, in s^-1.
-    /// - `operation_avg_dur`: Average duration of a local operatio, in s.
+    /// - `operation_avg_dur`: Average duration of a local operation, in s.
     fn new(
         this_node_id: u32,
         this_port: u16,
@@ -143,7 +143,7 @@ impl Client {
         self.next_request_id += 1;
 
         samples.push(Sample::Series(
-            "app_pending_len".to_string(),
+            "client_pending_len".to_string(),
             format!("{}:{}", self.this_node_id, self.this_port),
             self.pending.len() as f64,
         ));
@@ -254,10 +254,7 @@ impl EventHandler for Client {
                 AppEventData::LocalComplete(epr) => self.handle_local_complete(now, epr),
                 AppEventData::RemoteComplete(epr) => self.handle_remote_complete(now, epr),
             },
-            _ => panic!(
-                "invalid event {:?} received by a Application object",
-                event.event_type
-            ),
+            _ => panic!("invalid event {:?} received by a client", event.event_type),
         }
     }
 
