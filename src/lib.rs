@@ -12,6 +12,7 @@ pub mod nic;
 pub mod node;
 pub mod output;
 pub mod physical_topology;
+pub mod server;
 pub mod simulation;
 #[cfg(test)]
 pub mod tests;
