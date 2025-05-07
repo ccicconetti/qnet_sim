@@ -6,6 +6,7 @@ use std::io::Write;
 use serde::Serialize;
 
 static GIGA: u64 = 1000000000;
+static SPEED_OF_LIGHT: f64 = 299792458.0;
 
 pub trait CsvFriend {
     fn header(&self) -> String;
@@ -18,6 +19,11 @@ pub fn to_seconds(ns: u64) -> f64 {
 
 pub fn to_nanoseconds(s: f64) -> u64 {
     (s * GIGA as f64).round() as u64
+}
+
+/// Return the latency to cross a distance at the speed of light.
+pub fn distance_to_latency(distance: f64) -> f64 {
+    distance / SPEED_OF_LIGHT
 }
 
 /// Compute the fidelity with an exponential decaying rate.

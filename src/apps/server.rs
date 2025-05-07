@@ -19,7 +19,7 @@ struct EprResponse {
     client_port: u16,
 }
 
-/// Serverapplication.
+/// Server application.
 #[derive(Debug)]
 pub struct Server {
     /// Source node ID.
@@ -64,6 +64,11 @@ impl Server {
     }
 
     fn handle_epr_response(&mut self, data: EprResponseData) -> (Vec<Event>, Vec<Sample>) {
+        assert!(
+            !data.is_source,
+            "received EPR response addressed to the client at this server {}:{}",
+            self.this_node_id, self.this_port
+        );
         assert!(
             data.epr.target_node_id == self.this_node_id,
             "received EPR response not addressed to this node"
@@ -228,6 +233,7 @@ mod tests {
                 EventType::AppEvent(AppEventData::EprResponse(EprResponseData {
                     epr: five_tuple.clone(),
                     memory_cell: Some((2, nic::Role::Master, 0)),
+                    is_source: false,
                 })),
             ))
             .0;

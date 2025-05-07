@@ -98,6 +98,9 @@ impl std::fmt::Display for EprFiveTuple {
 pub struct EprResponseData {
     /// Five-tuple associated with this EPR.
     pub epr: EprFiveTuple,
+    /// The boolean is true if the EPR response is associated with the source
+    /// node; it is false if it is associated with the target, instead.
+    pub is_source: bool,
     /// Neighbor node ID, used to identify the NIC, and memory cell index.
     /// If None then the request failed.
     pub memory_cell: Option<(u32, crate::nic::Role, usize)>,
@@ -118,7 +121,63 @@ pub enum AppEventData {
     /// Local operations complete for a given EPR request.
     LocalComplete(EprFiveTuple),
     /// Remote operations complete for a given EPR request.
-    RemoteComplete(EprFiveTuple),
+    /// The boolean is true if the network latency has to be added.
+    RemoteComplete(EprFiveTuple, bool),
+}
+
+impl AppEventData {
+    pub fn needs_latency(&self) -> bool {
+        match self {
+            Self::RemoteComplete(_, needs_latency) => *needs_latency,
+            _ => false,
+        }
+    }
+    pub fn clear_latency(&mut self) {
+        match self {
+            Self::RemoteComplete(_, needs_latency) => *needs_latency = false,
+            _ => {}
+        }
+    }
+    pub fn node_id(&self) -> u32 {
+        match self {
+            Self::EprRequest(node_id, _port) => *node_id,
+            Self::EprResponse(data) => {
+                if data.is_source {
+                    data.epr.source_node_id
+                } else {
+                    data.epr.target_node_id
+                }
+            }
+            Self::LocalComplete(data) => data.source_node_id,
+            Self::RemoteComplete(data, _needs_latency) => data.source_node_id,
+        }
+    }
+    pub fn peer_node_id(&self) -> Option<u32> {
+        match self {
+            Self::EprRequest(_node_id, _port) => None,
+            Self::EprResponse(data) => Some(if data.is_source {
+                data.epr.target_node_id
+            } else {
+                data.epr.source_node_id
+            }),
+            Self::LocalComplete(data) => Some(data.target_node_id),
+            Self::RemoteComplete(data, _needs_latency) => Some(data.source_node_id),
+        }
+    }
+    pub fn port(&self) -> u16 {
+        match self {
+            Self::EprRequest(_node_id, port) => *port,
+            Self::EprResponse(data) => {
+                if data.is_source {
+                    data.epr.source_port
+                } else {
+                    data.epr.target_port
+                }
+            }
+            Self::LocalComplete(data) => data.source_port,
+            Self::RemoteComplete(data, _needs_latency) => data.source_port,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -151,6 +210,10 @@ impl Event {
             time: crate::utils::to_nanoseconds(time),
             event_type,
         }
+    }
+
+    pub fn new_ns(time: u64, event_type: EventType) -> Self {
+        Self { time, event_type }
     }
 
     pub fn time(&self) -> u64 {

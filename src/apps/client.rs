@@ -162,6 +162,12 @@ impl Client {
     }
 
     fn handle_epr_response(&mut self, data: EprResponseData) -> (Vec<Event>, Vec<Sample>) {
+        assert!(
+            data.is_source,
+            "received EPR response addressed to the server at client {}:{}",
+            self.this_node_id, self.this_port
+        );
+
         let mut events = vec![];
 
         let request = self.get_request(&data.epr);
@@ -256,7 +262,7 @@ impl EventHandler for Client {
                 }
                 AppEventData::EprResponse(data) => self.handle_epr_response(data),
                 AppEventData::LocalComplete(epr) => self.handle_local_complete(now, epr),
-                AppEventData::RemoteComplete(epr) => self.handle_remote_complete(now, epr),
+                AppEventData::RemoteComplete(epr, _) => self.handle_remote_complete(now, epr),
             },
             _ => panic!("invalid event {:?} received by a client", event.event_type),
         }
@@ -368,6 +374,7 @@ mod tests {
                 EventType::AppEvent(AppEventData::EprResponse(EprResponseData {
                     epr: five_tuple.clone(),
                     memory_cell: Some((2, nic::Role::Master, 0)),
+                    is_source: true,
                 })),
             ))
             .0;
@@ -386,7 +393,7 @@ mod tests {
         let events = client
             .handle(Event::new(
                 1.0,
-                EventType::AppEvent(AppEventData::RemoteComplete(five_tuple.clone())),
+                EventType::AppEvent(AppEventData::RemoteComplete(five_tuple.clone(), true)),
             ))
             .0;
         assert!(events.is_empty());

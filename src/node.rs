@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 /// A quantum node.
-#[derive(Debug)]
 pub struct Node {
     /// Node's identifier.
     node_id: u32,
@@ -10,6 +9,8 @@ pub struct Node {
     nics_master: std::collections::HashMap<u32, super::nic::Nic>,
     /// Quantum NICs towards logical peers for which this node is slave.
     nics_slave: std::collections::HashMap<u32, super::nic::Nic>,
+    /// The applications, identified by their port.
+    applications: std::collections::HashMap<u16, Box<dyn crate::event::EventHandler>>,
 }
 
 impl Node {
@@ -19,7 +20,20 @@ impl Node {
             node_id,
             nics_master: std::collections::HashMap::new(),
             nics_slave: std::collections::HashMap::new(),
+            applications: std::collections::HashMap::new(),
         }
+    }
+
+    /// Retrieve an application running on this node.
+    pub fn application(
+        &mut self,
+        port: u16,
+    ) -> anyhow::Result<&mut Box<dyn crate::event::EventHandler>> {
+        self.applications.get_mut(&port).ok_or(anyhow::anyhow!(
+            "no application at port {} on node {}",
+            port,
+            self.node_id
+        ))
     }
 
     /// Add a NIC towards a given peer.

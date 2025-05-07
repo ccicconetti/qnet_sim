@@ -5,8 +5,8 @@ use petgraph::visit::EdgeRef;
 use rand::SeedableRng;
 use rand_distr::Distribution;
 
-use crate::event::*;
 use crate::output::Sample;
+use crate::{event::*, node};
 
 #[derive(Debug)]
 pub struct EprGenerator {
@@ -34,7 +34,6 @@ impl EprGenerator {
 }
 
 /// A quantum network is made of a collection of nodes.
-#[derive(Debug)]
 pub struct Network {
     /// The network nodes, with compact identifiers from 0.
     nodes: Vec<super::node::Node>,
@@ -99,6 +98,31 @@ impl Network {
             epr_generators,
             epr_register,
             physical_topology,
+        }
+    }
+
+    fn handle_app_event(&mut self, now: u64, data: AppEventData) -> (Vec<Event>, Vec<Sample>) {
+        let mut data = data;
+        if data.needs_latency() {
+            data.clear_latency();
+            let distance = self
+                .physical_topology
+                .distance(
+                    data.node_id(),
+                    data.peer_node_id().expect("empty peer node_id"),
+                )
+                .expect("cannot compute distance between two nodes");
+
+            let latency = crate::utils::distance_to_latency(distance);
+            (vec![Event::new(latency, EventType::AppEvent(data))], vec![])
+        } else {
+            let node_id = data.node_id();
+            assert!((node_id as usize) < self.nodes.len(), "invalid application event received by a Network object: node_id = {}, number of nodes = {}", node_id, self.nodes.len());
+            let node = &mut self.nodes[node_id as usize];
+            let application = node
+                .application(data.port())
+                .expect("unknown target application for an event");
+            application.handle(Event::new_ns(now, EventType::AppEvent(data)))
         }
     }
 
@@ -260,6 +284,8 @@ impl EventHandler for Network {
     fn handle(&mut self, event: Event) -> (Vec<Event>, Vec<Sample>) {
         let now = event.time();
         match event.event_type {
+            EventType::AppEvent(data) => self.handle_app_event(now, data),
+            // EventType::OsEvent(data) => self.handle_os_event(now, data),
             EventType::NodeEvent(data) => match data {
                 NodeEventData::EprGenerated(data) => self.handle_epr_generated(now, data),
                 NodeEventData::EprNotified(data) => self.handle_epr_notified(now, data),

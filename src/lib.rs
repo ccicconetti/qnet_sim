@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: © 2025 Claudio Cicconetti <c.cicconetti@iit.cnr.it>
 // SPDX-License-Identifier: MIT
 
-pub mod client;
+pub mod apps;
 pub mod config;
 pub mod epr_register;
 pub mod event;
@@ -12,7 +12,6 @@ pub mod nic;
 pub mod node;
 pub mod output;
 pub mod physical_topology;
-pub mod server;
 pub mod simulation;
 #[cfg(test)]
 pub mod tests;
