@@ -55,7 +55,7 @@ impl Client {
     /// - `seed`: Seed to initialize internal RNG.
     /// - `operation_rate`: Rate at which a new EPR is requested, in s^-1.
     /// - `operation_avg_dur`: Average duration of a local operation, in s.
-    fn new(
+    pub fn new(
         this_node_id: u32,
         this_port: u16,
         peer_node_id: u32,

@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: © 2025 Claudio Cicconetti <c.cicconetti@iit.cnr.it>
 // SPDX-License-Identifier: MIT
 
+use crate::event::*;
+use crate::output::Sample;
+
 /// A quantum node.
 pub struct Node {
     /// Node's identifier.
@@ -34,6 +37,27 @@ impl Node {
             port,
             self.node_id
         ))
+    }
+
+    /// Add an application to this node.
+    pub fn add_applicaton(&mut self, application: Box<dyn crate::event::EventHandler>, port: u16) {
+        if self.applications.insert(port, application).is_some() {
+            panic!(
+                "new application with same port {} added at node {}",
+                port, self.node_id
+            );
+        }
+    }
+
+    /// Return the next port number available.
+    pub fn next_port(&self) -> u16 {
+        let mut port = 0;
+        loop {
+            if !self.applications.contains_key(&port) {
+                return port;
+            }
+            port += 1;
+        }
     }
 
     /// Add a NIC towards a given peer.
@@ -91,5 +115,33 @@ impl Node {
         self.nics(role)
             .get_mut(&peer_node_id)
             .unwrap_or_else(|| panic!("could not find NIC for peer {} ({:?})", peer_node_id, role))
+    }
+}
+
+impl EventHandler for Node {
+    fn handle(&mut self, event: Event) -> (Vec<Event>, Vec<Sample>) {
+        match &event.event_type {
+            EventType::AppEvent(data) => {
+                let application = self
+                    .application(data.port())
+                    .expect("unknown target application for an event");
+                application.handle(event)
+            }
+            _ => panic!(
+                "invalid event {:?} received by a Node object",
+                event.event_type
+            ),
+        }
+    }
+
+    /// Kick start all the applications.
+    fn initial(&mut self) -> Vec<Event> {
+        let mut events = vec![];
+
+        for application in self.applications.values_mut() {
+            events.append(&mut application.initial());
+        }
+
+        events
     }
 }

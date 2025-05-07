@@ -42,7 +42,7 @@ impl Server {
     /// - `this_port`: Source port.
     /// - `seed`: Seed to initialize internal RNG.
     /// - `operation_avg_dur`: Average duration of a local operation, in s.
-    fn new(this_node_id: u32, this_port: u16, seed: u64, operation_avg_dur: f64) -> Self {
+    pub fn new(this_node_id: u32, this_port: u16, seed: u64, operation_avg_dur: f64) -> Self {
         let rng = rand::rngs::StdRng::seed_from_u64(seed);
         let rv_local_ops =
             rand_distr::Exp::new(1.0 / operation_avg_dur).expect("could not create an expo rv");

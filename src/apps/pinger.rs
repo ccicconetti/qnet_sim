@@ -34,7 +34,7 @@ impl Pinger {
     /// - `peer_node_id`: Target node ID.
     /// - `peer_port`: Target port.
     /// - `max_requests`: Maximum number of requests.
-    fn new(
+    pub fn new(
         this_node_id: u32,
         this_port: u16,
         peer_node_id: u32,

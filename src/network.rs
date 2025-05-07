@@ -5,8 +5,8 @@ use petgraph::visit::EdgeRef;
 use rand::SeedableRng;
 use rand_distr::Distribution;
 
+use crate::event::*;
 use crate::output::Sample;
-use crate::{event::*, node};
 
 #[derive(Debug)]
 pub struct EprGenerator {
@@ -36,13 +36,13 @@ impl EprGenerator {
 /// A quantum network is made of a collection of nodes.
 pub struct Network {
     /// The network nodes, with compact identifiers from 0.
-    nodes: Vec<super::node::Node>,
+    pub nodes: Vec<super::node::Node>,
     /// The EPR pair generators, indexed by the ID of the tx node.
-    epr_generators: std::collections::HashMap<u32, Vec<EprGenerator>>,
+    pub epr_generators: std::collections::HashMap<u32, Vec<EprGenerator>>,
     /// The EPR register.
-    epr_register: crate::epr_register::EprRegister,
+    pub epr_register: crate::epr_register::EprRegister,
     /// The physical topology.
-    physical_topology: crate::physical_topology::PhysicalTopology,
+    pub physical_topology: crate::physical_topology::PhysicalTopology,
 }
 
 impl Network {
@@ -119,10 +119,7 @@ impl Network {
             let node_id = data.node_id();
             assert!((node_id as usize) < self.nodes.len(), "invalid application event received by a Network object: node_id = {}, number of nodes = {}", node_id, self.nodes.len());
             let node = &mut self.nodes[node_id as usize];
-            let application = node
-                .application(data.port())
-                .expect("unknown target application for an event");
-            application.handle(Event::new_ns(now, EventType::AppEvent(data)))
+            node.handle(Event::new_ns(now, EventType::AppEvent(data)))
         }
     }
 
@@ -298,7 +295,7 @@ impl EventHandler for Network {
         }
     }
 
-    /// Kick start all the EPR generators.
+    /// Kick start all the EPR generators and other nodes' initial events.
     fn initial(&mut self) -> Vec<Event> {
         let mut events = vec![];
 
@@ -306,6 +303,10 @@ impl EventHandler for Network {
             for generator in generators {
                 events.push(generator.handle());
             }
+        }
+
+        for node in &mut self.nodes {
+            events.append(&mut node.initial());
         }
 
         events

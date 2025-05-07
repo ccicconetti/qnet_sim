@@ -58,8 +58,8 @@ async fn main() -> anyhow::Result<()> {
                 conf_path,
                 serde_json::to_string_pretty(&UserConfig::default())?,
             )?;
-            return Ok(());
         }
+        return Ok(());
     }
 
     // Check command-line arguments.

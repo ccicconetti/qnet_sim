@@ -32,7 +32,7 @@ impl Ponger {
     /// Parameters:
     /// - `this_node_id`: Source node ID.
     /// - `this_port`: Source port.
-    fn new(this_node_id: u32, this_port: u16) -> Self {
+    pub fn new(this_node_id: u32, this_port: u16) -> Self {
         Self {
             this_node_id,
             this_port,
