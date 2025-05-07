@@ -1,9 +1,8 @@
 // SPDX-FileCopyrightText: © 2025 Claudio Cicconetti <c.cicconetti@iit.cnr.it>
 // SPDX-License-Identifier: MIT
 
-use std::io::Write;
-
 use serde::Serialize;
+use std::io::Write;
 
 static GIGA: u64 = 1000000000;
 static SPEED_OF_LIGHT: f64 = 299792458.0;
@@ -88,6 +87,7 @@ pub fn struct_to_csv<T: Serialize>(s: T) -> anyhow::Result<String> {
 
 pub fn struct_to_csv_header<T: Serialize>(s: T) -> anyhow::Result<String> {
     let fields = struct_to_map(s)?;
+
     let mut ret = vec![];
     for (name, _value) in fields {
         ret.push(name);
@@ -96,9 +96,8 @@ pub fn struct_to_csv_header<T: Serialize>(s: T) -> anyhow::Result<String> {
 }
 
 fn struct_to_map<T: Serialize>(s: T) -> anyhow::Result<serde_json::Map<String, serde_json::Value>> {
-    let mut value = serde_json::to_value(s)?;
-    anyhow::ensure!(value.is_object(), "invalid struct");
-    let fields = value.as_object_mut().unwrap();
+    let value = serde_json::to_value(s)?;
+    let mut fields = json_unflattening::flattening::flatten(&value)?;
     fields.sort_keys();
     Ok(fields.clone())
 }
