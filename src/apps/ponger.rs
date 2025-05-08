@@ -58,7 +58,7 @@ impl Ponger {
             (
                 vec![Event::new(
                     0.0,
-                    EventType::NodeEvent(NodeEventData::EprFidelity(EprFidelityData {
+                    EventType::NetworkEvent(NetworkEventData::EprFidelity(EprFidelityData {
                         app_node_id: data.epr.source_node_id,
                         port: data.epr.source_port,
                         consume_node_id: self.this_node_id.clone(),

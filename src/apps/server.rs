@@ -123,7 +123,7 @@ impl Server {
         let (neighbor_node_id, role, index) = request.memory_cell;
         events.push(Event::new(
             0.0,
-            EventType::NodeEvent(NodeEventData::EprFidelity(EprFidelityData {
+            EventType::NetworkEvent(NetworkEventData::EprFidelity(EprFidelityData {
                 app_node_id: request.client_node_id,
                 port: request.client_port,
                 consume_node_id: self.this_node_id.clone(),
@@ -167,15 +167,15 @@ mod tests {
     use crate::event::Event;
     use crate::event::EventHandler;
     use crate::event::EventType;
+    use crate::event::NetworkEventData;
     use crate::event::NodeEventData;
-    use crate::event::OsEventData;
     use crate::nic;
 
     use super::Server;
 
     fn is_os_epr_request(event: &EventType) -> bool {
-        if let EventType::OsEvent(data) = event {
-            matches!(data, OsEventData::EprRequestApp(_))
+        if let EventType::NodeEvent(data) = event {
+            matches!(data, NodeEventData::EprRequestApp(_))
         } else {
             false
         }
@@ -202,8 +202,8 @@ mod tests {
     }
 
     fn is_node_epr_fidelity(event: &EventType) -> bool {
-        if let EventType::NodeEvent(data) = event {
-            matches!(data, NodeEventData::EprFidelity(_))
+        if let EventType::NetworkEvent(data) = event {
+            matches!(data, NetworkEventData::EprFidelity(_))
         } else {
             false
         }

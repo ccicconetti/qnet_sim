@@ -132,7 +132,7 @@ impl Client {
         // Send the EPR request to the OS.
         events.push(Event::new(
             0.0,
-            EventType::OsEvent(OsEventData::EprRequestApp(EprFiveTuple {
+            EventType::NodeEvent(NodeEventData::EprRequestApp(EprFiveTuple {
                 source_node_id: self.this_node_id,
                 source_port: self.this_port,
                 target_node_id: self.peer_node_id,
@@ -217,7 +217,7 @@ impl Client {
             .unwrap_or_else(|| panic!("local operation completed on a failed request {}", epr));
         events.push(Event::new(
             0.0,
-            EventType::NodeEvent(NodeEventData::EprFidelity(EprFidelityData {
+            EventType::NetworkEvent(NetworkEventData::EprFidelity(EprFidelityData {
                 app_node_id: this_node_id,
                 port: this_port,
                 consume_node_id: this_node_id,
@@ -285,15 +285,15 @@ mod tests {
     use crate::event::Event;
     use crate::event::EventHandler;
     use crate::event::EventType;
+    use crate::event::NetworkEventData;
     use crate::event::NodeEventData;
-    use crate::event::OsEventData;
     use crate::nic;
 
     use super::Client;
 
     fn is_os_epr_request(event: &EventType) -> bool {
-        if let EventType::OsEvent(data) = event {
-            matches!(data, OsEventData::EprRequestApp(_))
+        if let EventType::NodeEvent(data) = event {
+            matches!(data, NodeEventData::EprRequestApp(_))
         } else {
             false
         }
@@ -320,8 +320,8 @@ mod tests {
     }
 
     fn is_node_epr_fidelity(event: &EventType) -> bool {
-        if let EventType::NodeEvent(data) = event {
-            matches!(data, NodeEventData::EprFidelity(_))
+        if let EventType::NetworkEvent(data) = event {
+            matches!(data, NetworkEventData::EprFidelity(_))
         } else {
             false
         }
@@ -355,9 +355,9 @@ mod tests {
             .0;
         assert_eq!(2, events.len());
         assert!(is_os_epr_request(&events[0].event_type));
-        let five_tuple = if let EventType::OsEvent(data) = &events[0].event_type {
+        let five_tuple = if let EventType::NodeEvent(data) = &events[0].event_type {
             #[allow(irrefutable_let_patterns)]
-            if let OsEventData::EprRequestApp(five_tuple) = data {
+            if let NodeEventData::EprRequestApp(five_tuple) = data {
                 five_tuple
             } else {
                 panic!("wrong event sub-type");

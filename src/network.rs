@@ -24,7 +24,7 @@ impl EprGenerator {
         let next_epr_generation = self.rv.sample(&mut self.rng);
         Event::new(
             next_epr_generation,
-            EventType::NodeEvent(NodeEventData::EprGenerated(EprGeneratedData {
+            EventType::NetworkEvent(NetworkEventData::EprGenerated(EprGeneratedData {
                 tx_node_id: self.tx_node_id,
                 master_node_id: self.master_node_id,
                 slave_node_id: self.slave_node_id,
@@ -162,7 +162,7 @@ impl Network {
                     // on the master/slave nodes.
                     events.push(Event::new(
                         0.0_f64,
-                        EventType::NodeEvent(NodeEventData::EprNotified(EprNotifiedData {
+                        EventType::NetworkEvent(NetworkEventData::EprNotified(EprNotifiedData {
                             this_node_id: data.master_node_id,
                             peer_node_id: data.slave_node_id,
                             role: crate::nic::Role::Master,
@@ -171,7 +171,7 @@ impl Network {
                     ));
                     events.push(Event::new(
                         0.0_f64,
-                        EventType::NodeEvent(NodeEventData::EprNotified(EprNotifiedData {
+                        EventType::NetworkEvent(NetworkEventData::EprNotified(EprNotifiedData {
                             this_node_id: data.slave_node_id,
                             peer_node_id: data.master_node_id,
                             role: crate::nic::Role::Slave,
@@ -282,11 +282,11 @@ impl EventHandler for Network {
         let now = event.time();
         match event.event_type {
             EventType::AppEvent(data) => self.handle_app_event(now, data),
-            // EventType::OsEvent(data) => self.handle_os_event(now, data),
-            EventType::NodeEvent(data) => match data {
-                NodeEventData::EprGenerated(data) => self.handle_epr_generated(now, data),
-                NodeEventData::EprNotified(data) => self.handle_epr_notified(now, data),
-                NodeEventData::EprFidelity(data) => self.handle_epr_fidelity(now, data),
+            // EventType::NodeEvent(data) => self.handle_os_event(now, data),
+            EventType::NetworkEvent(data) => match data {
+                NetworkEventData::EprGenerated(data) => self.handle_epr_generated(now, data),
+                NetworkEventData::EprNotified(data) => self.handle_epr_notified(now, data),
+                NetworkEventData::EprFidelity(data) => self.handle_epr_fidelity(now, data),
             },
             _ => panic!(
                 "invalid event {:?} received by a Network object",

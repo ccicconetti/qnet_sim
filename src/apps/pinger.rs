@@ -62,22 +62,20 @@ impl Pinger {
         assert!(self.this_port == port);
 
         self.created = now;
+        let event = Event::new(
+            0.0,
+            EventType::NodeEvent(NodeEventData::EprRequestApp(EprFiveTuple {
+                source_node_id: self.this_node_id,
+                source_port: self.this_port,
+                target_node_id: self.peer_node_id,
+                target_port: self.peer_port,
+                request_id: self.next_request_id,
+            })),
+        );
         self.next_request_id += 1;
 
         // Send the EPR request to the OS.
-        (
-            vec![Event::new(
-                0.0,
-                EventType::OsEvent(OsEventData::EprRequestApp(EprFiveTuple {
-                    source_node_id: self.this_node_id,
-                    source_port: self.this_port,
-                    target_node_id: self.peer_node_id,
-                    target_port: self.peer_port,
-                    request_id: self.next_request_id,
-                })),
-            )],
-            vec![],
-        )
+        (vec![event], vec![])
     }
 
     fn handle_epr_response(
@@ -100,7 +98,7 @@ impl Pinger {
         let (neighbor_node_id, role, index) = memory_cell.expect("empty memory cell received");
         events.push(Event::new(
             0.0,
-            EventType::NodeEvent(NodeEventData::EprFidelity(EprFidelityData {
+            EventType::NetworkEvent(NetworkEventData::EprFidelity(EprFidelityData {
                 app_node_id: self.this_node_id,
                 port: self.this_port,
                 consume_node_id: self.this_node_id,

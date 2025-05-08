@@ -200,12 +200,12 @@ impl Simulation {
                             vec![],
                         )
                     }
-                    EventType::NodeEvent(event_data) => {
-                        log::debug!("N {} {:?}", now, event_data);
+                    EventType::NetworkEvent(event_data) => {
+                        log::debug!("X {} {:?}", now, event_data);
                         self.network.handle(event)
                     }
-                    EventType::OsEvent(event_data) => {
-                        log::debug!("O {} {:?}", now, event_data);
+                    EventType::NodeEvent(event_data) => {
+                        log::debug!("N {} {:?}", now, event_data);
                         self.network.handle(event)
                     }
                     EventType::AppEvent(event_data) => {
