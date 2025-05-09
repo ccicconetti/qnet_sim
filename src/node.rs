@@ -116,17 +116,47 @@ impl Node {
             .get_mut(&peer_node_id)
             .unwrap_or_else(|| panic!("could not find NIC for peer {} ({:?})", peer_node_id, role))
     }
+
+    /// Handle local events.
+    fn handle_node_event(&mut self, event: Event) -> (Vec<Event>, Vec<Sample>) {
+        let now = event.time();
+        if let EventType::NodeEvent(data) = event.event_type {
+            match data {
+                NodeEventData::EprRequestApp(epr) => self.handle_epr_request_app(now, epr),
+            }
+        } else {
+            panic!(
+                "wrong event type received: expected NetworkEvent received {:?}",
+                event.event_type
+            )
+        }
+    }
+
+    /// Handle local events.
+    fn handle_epr_request_app(&mut self, now: u64, epr: EprFiveTuple) -> (Vec<Event>, Vec<Sample>) {
+        todo!("{} {}", now, epr)
+        // (vec![], vec![])
+    }
 }
 
 impl EventHandler for Node {
     fn handle(&mut self, event: Event) -> (Vec<Event>, Vec<Sample>) {
+        if let Some(transfer) = &event.transfer {
+            assert!(
+                transfer.done,
+                "node {} received an event for which the transfer has not been simulated",
+                self.node_id,
+            );
+        }
         match &event.event_type {
             EventType::AppEvent(data) => {
+                // Dispatch event to the correct application.
                 let application = self
                     .application(data.port())
                     .expect("unknown target application for an event");
                 application.handle(event)
             }
+            EventType::NodeEvent(data) => self.handle_node_event(event),
             _ => panic!(
                 "invalid event {:?} received by a Node object",
                 event.event_type

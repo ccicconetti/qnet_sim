@@ -1,10 +1,8 @@
 // SPDX-FileCopyrightText: © 2025 Claudio Cicconetti <c.cicconetti@iit.cnr.it>
 // SPDX-License-Identifier: MIT
 
-use core::num;
 use rand::SeedableRng;
 use rand_distr::Distribution;
-use std::cmp::max;
 use std::io::Write;
 
 use crate::event::{Event, EventHandler, EventType};

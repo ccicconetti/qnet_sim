@@ -105,7 +105,7 @@ impl Server {
         )
     }
 
-    fn handle_local_complete(&mut self, now: u64, epr: EprFiveTuple) -> (Vec<Event>, Vec<Sample>) {
+    fn handle_local_complete(&mut self, _now: u64, epr: EprFiveTuple) -> (Vec<Event>, Vec<Sample>) {
         let mut events = vec![];
 
         assert_eq!(epr.target_node_id, self.this_node_id);
@@ -131,6 +131,14 @@ impl Server {
                 role,
                 index,
             })),
+        ));
+
+        // Send a remote complete notification to the client.
+        let dst_node_id = epr.source_node_id;
+        events.push(Event::new_transfer(
+            EventType::AppEvent(AppEventData::RemoteComplete(epr)),
+            self.this_node_id,
+            dst_node_id,
         ));
 
         (events, vec![self.pending_len_trace()])
@@ -168,30 +176,25 @@ mod tests {
     use crate::event::EventHandler;
     use crate::event::EventType;
     use crate::event::NetworkEventData;
-    use crate::event::NodeEventData;
     use crate::nic;
 
     use super::Server;
 
-    fn is_os_epr_request(event: &EventType) -> bool {
-        if let EventType::NodeEvent(data) = event {
-            matches!(data, NodeEventData::EprRequestApp(_))
-        } else {
-            false
-        }
-    }
-
-    fn is_app_epr_request(event: &EventType) -> bool {
-        if let EventType::AppEvent(data) = event {
-            matches!(data, AppEventData::EprRequest(_, _))
-        } else {
-            false
-        }
-    }
-
     fn is_local_complete(event: &EventType, expected_five_tuple: &EprFiveTuple) -> bool {
         if let EventType::AppEvent(data) = event {
             if let AppEventData::LocalComplete(actual_five_tuple) = data {
+                expected_five_tuple == actual_five_tuple
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    }
+
+    fn is_remote_complete(event: &EventType, expected_five_tuple: &EprFiveTuple) -> bool {
+        if let EventType::AppEvent(data) = event {
+            if let AppEventData::RemoteComplete(actual_five_tuple) = data {
                 expected_five_tuple == actual_five_tuple
             } else {
                 false
@@ -246,7 +249,8 @@ mod tests {
                 EventType::AppEvent(AppEventData::LocalComplete(five_tuple.clone())),
             ))
             .0;
-        assert_eq!(1, events.len());
+        assert_eq!(2, events.len());
         assert!(is_node_epr_fidelity(&events[0].event_type));
+        assert!(is_remote_complete(&events[1].event_type, &five_tuple));
     }
 }

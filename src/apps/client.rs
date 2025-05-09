@@ -262,7 +262,7 @@ impl EventHandler for Client {
                 }
                 AppEventData::EprResponse(data) => self.handle_epr_response(data),
                 AppEventData::LocalComplete(epr) => self.handle_local_complete(now, epr),
-                AppEventData::RemoteComplete(epr, _) => self.handle_remote_complete(now, epr),
+                AppEventData::RemoteComplete(epr) => self.handle_remote_complete(now, epr),
             },
             _ => panic!("invalid event {:?} received by a client", event.event_type),
         }
@@ -393,7 +393,7 @@ mod tests {
         let events = client
             .handle(Event::new(
                 1.0,
-                EventType::AppEvent(AppEventData::RemoteComplete(five_tuple.clone(), true)),
+                EventType::AppEvent(AppEventData::RemoteComplete(five_tuple.clone())),
             ))
             .0;
         assert!(events.is_empty());

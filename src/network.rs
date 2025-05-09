@@ -101,25 +101,43 @@ impl Network {
         }
     }
 
-    fn handle_app_event(&mut self, now: u64, data: AppEventData) -> (Vec<Event>, Vec<Sample>) {
-        let mut data = data;
-        if data.needs_latency() {
-            data.clear_latency();
-            let distance = self
-                .physical_topology
-                .distance(
-                    data.node_id(),
-                    data.peer_node_id().expect("empty peer node_id"),
-                )
-                .expect("cannot compute distance between two nodes");
+    fn handle_node_event(&mut self, event: Event) -> (Vec<Event>, Vec<Sample>) {
+        let mut event = event;
+        if let Some(transfer) = &mut event.transfer {
+            if !transfer.done {
+                // Re-schedule the same event after adding a latency that takes
+                // into account the classical communication from the source
+                // to the destination node.
+                transfer.done = true;
+                let distance = self
+                    .physical_topology
+                    .distance(transfer.src_node_id, transfer.dst_node_id)
+                    .expect("cannot compute distance between two nodes");
 
-            let latency = crate::utils::distance_to_latency(distance);
-            (vec![Event::new(latency, EventType::AppEvent(data))], vec![])
+                let latency = crate::utils::distance_to_latency(distance);
+                event.advance(crate::utils::to_nanoseconds(latency));
+                return (vec![event], vec![]);
+            }
+        }
+        let node_id = event.target_node_id();
+        assert!((node_id as usize) < self.nodes.len(), "invalid application event received by a Network object: node_id = {}, number of nodes = {}", node_id, self.nodes.len());
+        let node = &mut self.nodes[node_id as usize];
+        node.handle(event)
+    }
+
+    fn handle_network_event(&mut self, event: Event) -> (Vec<Event>, Vec<Sample>) {
+        let now = event.time();
+        if let EventType::NetworkEvent(data) = event.event_type {
+            match data {
+                NetworkEventData::EprGenerated(data) => self.handle_epr_generated(now, data),
+                NetworkEventData::EprNotified(data) => self.handle_epr_notified(now, data),
+                NetworkEventData::EprFidelity(data) => self.handle_epr_fidelity(now, data),
+            }
         } else {
-            let node_id = data.node_id();
-            assert!((node_id as usize) < self.nodes.len(), "invalid application event received by a Network object: node_id = {}, number of nodes = {}", node_id, self.nodes.len());
-            let node = &mut self.nodes[node_id as usize];
-            node.handle(Event::new_ns(now, EventType::AppEvent(data)))
+            panic!(
+                "wrong event type received: expected NetworkEvent received {:?}",
+                event.event_type
+            )
         }
     }
 
@@ -279,15 +297,9 @@ impl Network {
 
 impl EventHandler for Network {
     fn handle(&mut self, event: Event) -> (Vec<Event>, Vec<Sample>) {
-        let now = event.time();
-        match event.event_type {
-            EventType::AppEvent(data) => self.handle_app_event(now, data),
-            // EventType::NodeEvent(data) => self.handle_os_event(now, data),
-            EventType::NetworkEvent(data) => match data {
-                NetworkEventData::EprGenerated(data) => self.handle_epr_generated(now, data),
-                NetworkEventData::EprNotified(data) => self.handle_epr_notified(now, data),
-                NetworkEventData::EprFidelity(data) => self.handle_epr_fidelity(now, data),
-            },
+        match &event.event_type {
+            EventType::AppEvent(_) | EventType::NodeEvent(_) => self.handle_node_event(event),
+            EventType::NetworkEvent(_) => self.handle_network_event(event),
             _ => panic!(
                 "invalid event {:?} received by a Network object",
                 event.event_type

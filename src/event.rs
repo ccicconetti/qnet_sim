@@ -109,35 +109,37 @@ pub struct EprResponseData {
 #[derive(Debug, PartialEq, Eq)]
 pub enum NodeEventData {
     /// New EPR request requested by an app, identified by the five tuple
+    /// Created by an application, consumed by the node where it is running.
     EprRequestApp(EprFiveTuple),
+}
+
+impl NodeEventData {
+    pub fn node_id(&self) -> u32 {
+        match self {
+            NodeEventData::EprRequestApp(data) => data.source_node_id,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum AppEventData {
     /// New EPR request needed by an app, identified by node ID and port.
+    /// Created by an application, consumed by the same application.
     EprRequest(u32, u16),
-    /// EPR request response from the OS.
+    /// EPR request response from a node.
+    /// Created by a node, consumed by the application that requested the EPR
+    /// (is_source == true) and by its peer (is_source == false).
     EprResponse(EprResponseData),
     /// Local operations complete for a given EPR request.
+    /// Created by an application, consumed by the same application.
     LocalComplete(EprFiveTuple),
     /// Remote operations complete for a given EPR request.
     /// The boolean is true if the network latency has to be added.
-    RemoteComplete(EprFiveTuple, bool),
+    /// /// Created by an application, consumed by its peer.
+    RemoteComplete(EprFiveTuple),
 }
 
 impl AppEventData {
-    pub fn needs_latency(&self) -> bool {
-        match self {
-            Self::RemoteComplete(_, needs_latency) => *needs_latency,
-            _ => false,
-        }
-    }
-    pub fn clear_latency(&mut self) {
-        match self {
-            Self::RemoteComplete(_, needs_latency) => *needs_latency = false,
-            _ => {}
-        }
-    }
     pub fn node_id(&self) -> u32 {
         match self {
             Self::EprRequest(node_id, _port) => *node_id,
@@ -149,21 +151,10 @@ impl AppEventData {
                 }
             }
             Self::LocalComplete(data) => data.source_node_id,
-            Self::RemoteComplete(data, _needs_latency) => data.source_node_id,
+            Self::RemoteComplete(data) => data.source_node_id,
         }
     }
-    pub fn peer_node_id(&self) -> Option<u32> {
-        match self {
-            Self::EprRequest(_node_id, _port) => None,
-            Self::EprResponse(data) => Some(if data.is_source {
-                data.epr.target_node_id
-            } else {
-                data.epr.source_node_id
-            }),
-            Self::LocalComplete(data) => Some(data.target_node_id),
-            Self::RemoteComplete(data, _needs_latency) => Some(data.source_node_id),
-        }
-    }
+
     pub fn port(&self) -> u16 {
         match self {
             Self::EprRequest(_node_id, port) => *port,
@@ -174,8 +165,7 @@ impl AppEventData {
                     data.epr.target_port
                 }
             }
-            Self::LocalComplete(data) => data.source_port,
-            Self::RemoteComplete(data, _needs_latency) => data.source_port,
+            Self::LocalComplete(data) | Self::RemoteComplete(data) => data.source_port,
         }
     }
 }
@@ -197,31 +187,76 @@ pub enum EventType {
     AppEvent(AppEventData),
 }
 
+#[derive(PartialEq, Eq, Debug)]
+pub struct Trasfer {
+    pub src_node_id: u32,
+    pub dst_node_id: u32,
+    pub done: bool,
+}
+
+impl Trasfer {
+    pub fn new(src_node_id: u32, dst_node_id: u32) -> Self {
+        Self {
+            src_node_id,
+            dst_node_id,
+            done: false,
+        }
+    }
+}
+
 /// A simulation event.
 #[derive(PartialEq, Eq)]
 pub struct Event {
+    /// The simulated time associated with the event.
     time: u64,
+    /// The event type.
     pub event_type: EventType,
+    /// If specified, the event has to be handled by the target component after
+    /// classical communication latency has been added on the path between the
+    /// source (.0) and destination (.1).
+    pub transfer: Option<Trasfer>,
 }
 
 impl Event {
+    /// Create a new event to be executed at the specified relative time, in s.
     pub fn new(time: f64, event_type: EventType) -> Self {
         Self {
             time: crate::utils::to_nanoseconds(time),
             event_type,
+            transfer: None,
         }
     }
 
-    pub fn new_ns(time: u64, event_type: EventType) -> Self {
-        Self { time, event_type }
+    /// Create a new event to be executed by the target after a classical
+    /// communication latency is added between the source and destination.
+    pub fn new_transfer(event_type: EventType, src_node_id: u32, dst_node_id: u32) -> Self {
+        Self {
+            time: 0,
+            event_type,
+            transfer: Some(Trasfer::new(src_node_id, dst_node_id)),
+        }
     }
 
+    /// Return the time of the event, in ns.
     pub fn time(&self) -> u64 {
         self.time
     }
 
+    // Advance the event time by the specified period, in ns.
     pub fn advance(&mut self, advance_time: u64) {
         self.time += advance_time
+    }
+
+    /// Return the node that should handle the event.
+    pub fn target_node_id(&self) -> u32 {
+        match &self.event_type {
+            EventType::AppEvent(data) => data.node_id(),
+            EventType::NodeEvent(data) => data.node_id(),
+            _ => panic!(
+                "event of type {:?} does not have a target node",
+                self.event_type
+            ),
+        }
     }
 }
 
