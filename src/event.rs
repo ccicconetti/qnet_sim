@@ -111,6 +111,8 @@ pub struct EsRequestData {
     /// node that sent the request, for which it has master role (the node
     /// receiving the request has slave role).
     pub memory_cell: usize,
+    /// Local pair identifier.
+    pub local_pair_id: u64,
 }
 
 #[derive(Debug, PartialEq, Eq)]

@@ -80,7 +80,11 @@ impl Simulation {
         } else {
             crate::logical_topology::LogicalTopology::default()
         };
-        crate::network::Network::new(physical_topology, logical_topology, config.seed)
+        crate::network::Network::new(
+            physical_topology,
+            std::rc::Rc::new(logical_topology),
+            config.seed,
+        )
     }
 
     pub fn new(config: crate::config::Config, save_to_dot: bool) -> anyhow::Result<Self> {

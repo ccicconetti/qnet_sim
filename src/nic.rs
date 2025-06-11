@@ -149,15 +149,7 @@ impl Nic {
             return true;
         }
 
-        let oldest_valid = self
-            .memory_cells
-            .iter()
-            .enumerate()
-            .filter(|(_, cell)| cell.is_valid())
-            .min_by(|(_, a), (_, b)| a.cmp(b))
-            .map(|(index, _)| index);
-
-        if let Some(index) = oldest_valid {
+        if let Some(index) = self.oldest_valid() {
             self.memory_cells[index] = MemoryCell::new(now, epr_pair_id);
             return true;
         }
@@ -204,6 +196,26 @@ impl Nic {
             None
         }
     }
+
+    /// Return the index of the oldest valid memory cell, if any.
+    pub fn oldest_valid(&self) -> Option<usize> {
+        self.memory_cells
+            .iter()
+            .enumerate()
+            .filter(|(_, cell)| cell.is_valid())
+            .min_by(|(_, a), (_, b)| a.cmp(b))
+            .map(|(index, _)| index)
+    }
+
+    /// Return the index of the newest valid memory cell, if any.
+    pub fn newest_valid(&self) -> Option<usize> {
+        self.memory_cells
+            .iter()
+            .enumerate()
+            .filter(|(_, cell)| cell.is_valid())
+            .min_by(|(_, a), (_, b)| b.cmp(a))
+            .map(|(index, _)| index)
+    }
 }
 
 #[cfg(test)]
@@ -222,8 +234,13 @@ mod tests {
 
         assert_float_eq::assert_f64_near!(0.0, nic.occupancy());
 
+        assert!(nic.oldest_valid().is_none());
+        assert!(nic.newest_valid().is_none());
+
         for i in 0..10 {
             nic.add_epr_pair(i + 100, i);
+            assert_eq!(0, nic.oldest_valid().unwrap());
+            assert_eq!(i as usize, nic.newest_valid().unwrap());
             assert_float_eq::assert_f64_near!(0.1 * (i + 1) as f64, nic.occupancy());
         }
 
@@ -308,6 +325,8 @@ mod tests {
         for i in 0..10 {
             assert!(nic.used(i).is_some());
         }
+        assert!(nic.oldest_valid().is_none());
+        assert!(nic.newest_valid().is_none());
 
         // Make sure all the cells are used.
         for cell in &nic.memory_cells {

@@ -4,6 +4,24 @@
 use crate::event::*;
 use crate::output::Sample;
 
+#[derive(Debug, Clone)]
+enum Status {
+    Queued,
+    WaitingForResponse,
+}
+
+#[derive(Debug, Clone)]
+struct Request {
+    /// Time when the request was received.
+    received: u64,
+    /// EPR five tuple.
+    epr: EprFiveTuple,
+    /// Status
+    status: Status,
+    /// Path
+    path: Vec<u32>,
+}
+
 /// A quantum node.
 pub struct Node {
     /// Node's identifier.
@@ -14,16 +32,25 @@ pub struct Node {
     nics_slave: std::collections::HashMap<u32, super::nic::Nic>,
     /// The applications, identified by their port.
     applications: std::collections::HashMap<u16, Box<dyn crate::event::EventHandler>>,
+    /// The logical topology.
+    logical_topology: std::rc::Rc<crate::logical_topology::LogicalTopology>,
+    /// Pending requests grouped by peer.
+    pending_requests: std::collections::HashMap<u32, Vec<Request>>,
 }
 
 impl Node {
     /// Create a node with no NICs.
-    pub fn new(node_id: u32) -> Self {
+    pub fn new(
+        node_id: u32,
+        logical_topology: std::rc::Rc<crate::logical_topology::LogicalTopology>,
+    ) -> Self {
         Self {
             node_id,
             nics_master: std::collections::HashMap::new(),
             nics_slave: std::collections::HashMap::new(),
             applications: std::collections::HashMap::new(),
+            logical_topology,
+            pending_requests: std::collections::HashMap::new(),
         }
     }
 
@@ -85,6 +112,10 @@ impl Node {
     ) -> f64 {
         let nic = self.get_nic(peer_node_id, &role);
         nic.add_epr_pair(now, epr_pair_id);
+
+        // Schedule pending requests for this peer, if any. XXX
+        // self.schedule_pending_requests(peer_node_id);
+
         nic.occupancy()
     }
 
@@ -135,14 +166,86 @@ impl Node {
 
     /// Handle EPR request from an application on this node.
     fn handle_epr_request_app(&mut self, now: u64, epr: EprFiveTuple) -> (Vec<Event>, Vec<Sample>) {
-        todo!("{} {}", now, epr)
-        // (vec![], vec![])
+        assert_ne!(
+            epr.source_node_id, epr.target_node_id,
+            "src and dst nodes must be different"
+        );
+
+        // Find the path to go from src to dst in the logical topology.
+        assert_eq!(self.node_id, epr.source_node_id);
+        let path = self
+            .logical_topology
+            .path(epr.source_node_id, epr.target_node_id);
+        assert!(path.len() >= 2);
+        assert_eq!(epr.source_node_id, *path.first().unwrap());
+        assert_eq!(epr.target_node_id, *path.last().unwrap());
+
+        if path.len() > 2 {
+            todo!(
+                "{} {} path {:?}: multi-hop not yet implemented",
+                now,
+                epr,
+                path
+            );
+        }
+
+        let peer = *path.last().unwrap();
+        self.pending_requests
+            .entry(peer)
+            .or_default()
+            .push(Request {
+                received: now,
+                epr: epr,
+                status: Status::Queued,
+                path,
+            });
+
+        self.schedule_pending_requests(peer)
     }
 
     /// Handle ES request from another node.
     fn handle_es_request(&mut self, now: u64, data: EsRequestData) -> (Vec<Event>, Vec<Sample>) {
-        todo!("{} {:?}", now, data)
+        todo!("{} {:?}: multi-hop not yet implemented", now, data)
         // (vec![], vec![])
+    }
+
+    /// Schedule requests pending for a given peer, if possible.
+    fn schedule_pending_requests(&mut self, peer: u32) -> (Vec<Event>, Vec<Sample>) {
+        let nic = self
+            .nics_master
+            .get_mut(&peer)
+            .expect("no NIC found for peer");
+
+        let mut events = vec![];
+        if let Some(requests) = self.pending_requests.get(&peer) {
+            for request in requests {
+                match request.status {
+                    Status::Queued => {
+                        if let Some(index) = nic.newest_valid() {
+                            let local_pair_id = nic
+                                .used(index)
+                                .expect("cannot use a memory cell that is assumed to be valid")
+                                .identifier;
+                            events.push(Event::new(
+                                0.0,
+                                EventType::NodeEvent(NodeEventData::EsRequest(EsRequestData {
+                                    epr: request.epr.clone(),
+                                    next_hop: peer,
+                                    path: request.path.clone(),
+                                    memory_cell: index,
+                                    local_pair_id,
+                                })),
+                            ));
+                        } else {
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        (events, vec![])
     }
 }
 
