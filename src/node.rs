@@ -95,7 +95,7 @@ impl Node {
         peer_node_id: u32,
         role: &super::nic::Role,
         index: usize,
-    ) -> Option<(u64, u64)> {
+    ) -> Option<crate::nic::MemoryCellData> {
         self.get_nic(peer_node_id, role).consume(index)
     }
 
@@ -123,6 +123,7 @@ impl Node {
         if let EventType::NodeEvent(data) = event.event_type {
             match data {
                 NodeEventData::EprRequestApp(epr) => self.handle_epr_request_app(now, epr),
+                NodeEventData::EsRequest(data) => self.handle_es_request(now, data),
             }
         } else {
             panic!(
@@ -132,9 +133,15 @@ impl Node {
         }
     }
 
-    /// Handle local events.
+    /// Handle EPR request from an application on this node.
     fn handle_epr_request_app(&mut self, now: u64, epr: EprFiveTuple) -> (Vec<Event>, Vec<Sample>) {
         todo!("{} {}", now, epr)
+        // (vec![], vec![])
+    }
+
+    /// Handle ES request from another node.
+    fn handle_es_request(&mut self, now: u64, data: EsRequestData) -> (Vec<Event>, Vec<Sample>) {
+        todo!("{} {:?}", now, data)
         // (vec![], vec![])
     }
 }
@@ -156,7 +163,7 @@ impl EventHandler for Node {
                     .expect("unknown target application for an event");
                 application.handle(event)
             }
-            EventType::NodeEvent(data) => self.handle_node_event(event),
+            EventType::NodeEvent(_data) => self.handle_node_event(event),
             _ => panic!(
                 "invalid event {:?} received by a Node object",
                 event.event_type

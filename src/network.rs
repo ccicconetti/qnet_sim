@@ -256,17 +256,19 @@ impl Network {
         data: EprFidelityData,
     ) -> (Vec<Event>, Vec<Sample>) {
         assert!(data.consume_node_id <= self.nodes.len() as u32);
-        let fidelity = if let Some((_creation_time, epr_pair_id)) = self.nodes
-            [data.consume_node_id as usize]
-            .consume(data.consume_node_id, &data.role, data.index)
-        {
+        let fidelity = if let Some(cell) = self.nodes[data.consume_node_id as usize].consume(
+            data.consume_node_id,
+            &data.role,
+            data.index,
+        ) {
             if let Some(weight) = self
                 .physical_topology
                 .graph()
                 .node_weight(data.consume_node_id.into())
             {
-                if let Some((updated, fidelity)) =
-                    self.epr_register.consume(epr_pair_id, data.consume_node_id)
+                if let Some((updated, fidelity)) = self
+                    .epr_register
+                    .consume(cell.identifier, data.consume_node_id)
                 {
                     assert!(now >= updated);
                     crate::utils::fidelity(

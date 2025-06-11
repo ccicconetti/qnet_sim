@@ -94,6 +94,44 @@ impl std::fmt::Display for EprFiveTuple {
     }
 }
 
+/// Entanglement swapping request body.
+#[derive(Debug, PartialEq, Eq)]
+pub struct EsRequestData {
+    /// EPR identifier.
+    pub epr: EprFiveTuple,
+    /// Next hop node, i.e., the node that is requested to perform the
+    /// entanglement swapping.
+    pub next_hop: u32,
+    /// Full path (the request used source routing).
+    /// The first node is always the originator of the EPR request, the last
+    /// one is always the node hosting the application's peer.
+    /// The vector never has less than two elements.
+    pub path: Vec<u32>,
+    /// Index of the memory cell identified for entanglement swapping by the
+    /// node that sent the request, for which it has master role (the node
+    /// receiving the request has slave role).
+    pub memory_cell: usize,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum NodeEventData {
+    /// New EPR request requested by an app, identified by the five tuple
+    /// Created by an application, consumed by the node where it is running.
+    EprRequestApp(EprFiveTuple),
+    /// Request to perform entanglement swapping at a node for the creation of
+    /// a remote EPR.
+    EsRequest(EsRequestData),
+}
+
+impl NodeEventData {
+    pub fn node_id(&self) -> u32 {
+        match self {
+            NodeEventData::EprRequestApp(data) => data.source_node_id,
+            NodeEventData::EsRequest(data) => data.next_hop,
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct EprResponseData {
     /// Five-tuple associated with this EPR.
@@ -104,21 +142,6 @@ pub struct EprResponseData {
     /// Neighbor node ID, used to identify the NIC, and memory cell index.
     /// If None then the request failed.
     pub memory_cell: Option<(u32, crate::nic::Role, usize)>,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum NodeEventData {
-    /// New EPR request requested by an app, identified by the five tuple
-    /// Created by an application, consumed by the node where it is running.
-    EprRequestApp(EprFiveTuple),
-}
-
-impl NodeEventData {
-    pub fn node_id(&self) -> u32 {
-        match self {
-            NodeEventData::EprRequestApp(data) => data.source_node_id,
-        }
-    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
