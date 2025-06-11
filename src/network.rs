@@ -235,24 +235,11 @@ impl Network {
             self.nodes.len()
         );
 
-        let occupancy = self.nodes[data.this_node_id as usize].epr_established(
+        self.nodes[data.this_node_id as usize].epr_established(
             now,
             data.peer_node_id,
             data.role,
             data.epr_pair_id,
-        );
-
-        (
-            vec![],
-            vec![Sample::Series(
-                "occupancy".to_string(),
-                format!(
-                    "{}-{}",
-                    data.this_node_id.to_string(),
-                    data.peer_node_id.to_string()
-                ),
-                occupancy,
-            )],
         )
     }
 

@@ -109,14 +109,23 @@ impl Node {
         peer_node_id: u32,
         role: super::nic::Role,
         epr_pair_id: u64,
-    ) -> f64 {
-        let nic = self.get_nic(peer_node_id, &role);
-        nic.add_epr_pair(now, epr_pair_id);
+    ) -> (Vec<Event>, Vec<Sample>) {
+        let occupancy = {
+            let nic = self.get_nic(peer_node_id, &role);
+            nic.add_epr_pair(now, epr_pair_id);
+            nic.occupancy()
+        };
 
-        // Schedule pending requests for this peer, if any. XXX
-        // self.schedule_pending_requests(peer_node_id);
+        // Schedule pending requests for this peer, if any.
+        let (events, mut samples) = self.schedule_pending_requests(peer_node_id);
 
-        nic.occupancy()
+        samples.push(Sample::Series(
+            "occupancy".to_string(),
+            format!("{}-{}", self.node_id.to_string(), peer_node_id.to_string()),
+            occupancy,
+        ));
+
+        (events, samples)
     }
 
     /// Consume the qubit of an EPR stored in a memory cell in one of the NICs.
@@ -211,36 +220,33 @@ impl Node {
 
     /// Schedule requests pending for a given peer, if possible.
     fn schedule_pending_requests(&mut self, peer: u32) -> (Vec<Event>, Vec<Sample>) {
-        let nic = self
-            .nics_master
-            .get_mut(&peer)
-            .expect("no NIC found for peer");
-
         let mut events = vec![];
-        if let Some(requests) = self.pending_requests.get(&peer) {
-            for request in requests {
-                match request.status {
-                    Status::Queued => {
-                        if let Some(index) = nic.newest_valid() {
-                            let local_pair_id = nic
-                                .used(index)
-                                .expect("cannot use a memory cell that is assumed to be valid")
-                                .identifier;
-                            events.push(Event::new(
-                                0.0,
-                                EventType::NodeEvent(NodeEventData::EsRequest(EsRequestData {
-                                    epr: request.epr.clone(),
-                                    next_hop: peer,
-                                    path: request.path.clone(),
-                                    memory_cell: index,
-                                    local_pair_id,
-                                })),
-                            ));
-                        } else {
-                            break;
+        if let Some(nic) = self.nics_master.get_mut(&peer) {
+            if let Some(requests) = self.pending_requests.get(&peer) {
+                for request in requests {
+                    match request.status {
+                        Status::Queued => {
+                            if let Some(index) = nic.newest_valid() {
+                                let local_pair_id = nic
+                                    .used(index)
+                                    .expect("cannot use a memory cell that is assumed to be valid")
+                                    .identifier;
+                                events.push(Event::new(
+                                    0.0,
+                                    EventType::NodeEvent(NodeEventData::EsRequest(EsRequestData {
+                                        epr: request.epr.clone(),
+                                        next_hop: peer,
+                                        path: request.path.clone(),
+                                        memory_cell: index,
+                                        local_pair_id,
+                                    })),
+                                ));
+                            } else {
+                                break;
+                            }
                         }
+                        _ => {}
                     }
-                    _ => {}
                 }
             }
         }
