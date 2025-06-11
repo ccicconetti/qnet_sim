@@ -100,6 +100,50 @@ impl LogicalTopology {
         &self.graph
     }
 
+    /// Return the path between `src` and `dst` in the logical topology.
+    /// Subsequent calls always return the same path for the same
+    /// source/destination pair.
+    pub fn path(&self, src: u32, dst: u32) -> Vec<u32> {
+        assert!(
+            src < self.graph.node_count() as u32,
+            "invalid src node index {} in the logical topology (count is {})",
+            src,
+            self.graph.node_count()
+        );
+        assert!(
+            dst < self.graph.node_count() as u32,
+            "invalid dst node index {} in the logical topology (count is {})",
+            dst,
+            self.graph.node_count()
+        );
+
+        let paths = self.paths.get(&src);
+        assert!(
+            paths.is_some(),
+            "could not find path from {} to {} in the logical topology",
+            src,
+            dst
+        );
+        let paths = paths.unwrap();
+        assert!(paths.predecessors.len() == self.graph.node_count());
+        let mut ret = vec![dst];
+
+        let mut cur = dst as usize;
+        while cur != src as usize {
+            assert!(cur < paths.predecessors.len());
+            let prev = paths.predecessors[cur]
+                .expect("invalid predecessor when finding a path in the logical topology");
+            cur = prev.index();
+            ret.push(cur as u32);
+        }
+
+        ret.reverse();
+
+        ret
+    }
+
+    /// Create the logical topology from a physical topology using algorithm
+    /// specified in `policy`.
     pub fn from_physical_topology(
         policy: &PhysicalToLogicalPolicy,
         physical_topology: &crate::physical_topology::PhysicalTopology,
@@ -470,7 +514,7 @@ mod tests {
     use petgraph::visit::EdgeRef;
     use rand::SeedableRng;
 
-    use crate::logical_topology::is_valid;
+    use crate::logical_topology::{is_valid, LogicalTopology, PhysicalToLogicalPolicy};
 
     use super::{find_paths, find_possible_logical_edges, physical_to_logical_random_greedy};
     use crate::tests::physical_topology_2_2;
@@ -490,6 +534,33 @@ mod tests {
             assert!(sat_indices.contains(&e.tx));
             assert!(sat_indices.contains(&e.master) || ogs_indices.contains(&e.master));
             assert!(sat_indices.contains(&e.slave) || ogs_indices.contains(&e.slave));
+        }
+    }
+
+    #[test]
+    fn test_logical_topology_path() {
+        let physical_topology = physical_topology_2_2();
+        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+        let logical_topology = LogicalTopology::from_physical_topology(
+            &PhysicalToLogicalPolicy::RandomGreedy,
+            &physical_topology,
+            &mut rng,
+        )
+        .expect("could not create the logical topology");
+
+        for src in physical_topology.ogs_indices() {
+            for dst in physical_topology.ogs_indices() {
+                let path = logical_topology.path(src as u32, dst as u32);
+                println!("src {} dst {} path {:?}", src, dst, path);
+                assert!(!path.is_empty());
+
+                if src == dst {
+                    assert_eq!(src, path[0]);
+                } else {
+                    assert_eq!(src, *path.first().unwrap());
+                    assert_eq!(dst, *path.last().unwrap());
+                }
+            }
         }
     }
 

@@ -43,13 +43,15 @@ pub struct Network {
     pub epr_register: crate::epr_register::EprRegister,
     /// The physical topology.
     pub physical_topology: crate::physical_topology::PhysicalTopology,
+    /// The logical topology.
+    pub logical_topology: crate::logical_topology::LogicalTopology,
 }
 
 impl Network {
     /// Create a network from the logical topology.
     pub fn new(
-        logical_topology: &super::logical_topology::LogicalTopology,
         physical_topology: crate::physical_topology::PhysicalTopology,
+        logical_topology: crate::logical_topology::LogicalTopology,
         init_seed: u64,
     ) -> Self {
         // Create the nodes.
@@ -98,6 +100,7 @@ impl Network {
             epr_generators,
             epr_register,
             physical_topology,
+            logical_topology,
         }
     }
 
@@ -337,7 +340,7 @@ mod tests {
     #[test]
     fn test_network_from_logical_topology() {
         let (physical_topology, logical_topology) = crate::tests::logical_topology_2_2();
-        let network = Network::new(&logical_topology, physical_topology, 42);
+        let network = Network::new(physical_topology, logical_topology, 42);
         assert_eq!(10, network.nodes.len());
     }
 
