@@ -22,10 +22,22 @@ struct Request {
     path: Vec<u32>,
 }
 
+#[derive(Debug, Clone)]
+pub struct NodeProperties {
+    /// Entanglement swapping success probability.
+    pub swapping_success_prob: f64,
+    /// Entanglement swapping duration, in s.
+    pub swapping_duration: f64,
+    /// Duration of the local operations to correct end-to-end pairs, in s.
+    pub correction_duration: f64,
+}
+
 /// A quantum node.
 pub struct Node {
     /// Node's identifier.
     node_id: u32,
+    /// Node's properties.
+    properties: NodeProperties,
     /// Quantum NICs towards logical peers for which this node is master.
     nics_master: std::collections::HashMap<u32, super::nic::Nic>,
     /// Quantum NICs towards logical peers for which this node is slave.
@@ -61,10 +73,12 @@ impl Node {
     /// Create a node with no NICs.
     pub fn new(
         node_id: u32,
+        properties: NodeProperties,
         logical_topology: std::rc::Rc<crate::logical_topology::LogicalTopology>,
     ) -> Self {
         Self {
             node_id,
+            properties,
             nics_master: std::collections::HashMap::new(),
             nics_slave: std::collections::HashMap::new(),
             applications: std::collections::HashMap::new(),
@@ -183,6 +197,9 @@ impl Node {
             match data {
                 NodeEventData::EprRequestApp(epr) => self.handle_epr_request_app(now, epr),
                 NodeEventData::EsRequest(data) => self.handle_es_request(now, data),
+                NodeEventData::EsLocalComplete(data) => self.handle_es_local_complete(now, data),
+                NodeEventData::EsSuccess(data) => self.handle_es_response(now, data, true),
+                NodeEventData::EsFailure(data) => self.handle_es_response(now, data, false),
             }
         } else {
             panic!(
@@ -233,8 +250,100 @@ impl Node {
 
     /// Handle ES request from another node.
     fn handle_es_request(&mut self, now: u64, data: EsRequestData) -> (Vec<Event>, Vec<Sample>) {
-        todo!("{} {:?}: multi-hop not yet implemented", now, data)
-        // (vec![], vec![])
+        assert_eq!(self.node_id, data.next_hop);
+
+        #[cfg(debug_assertions)]
+        {
+            let mut prev_hop_pos = data
+                .path
+                .iter()
+                .position(|x| *x == self.node_id)
+                .expect("this node not present in the path of an EsRequest")
+                as u32;
+            assert!(
+                prev_hop_pos > 0,
+                "the first node ({}) in the path ({:?}) cannot receive an EsRequest",
+                self.node_id,
+                data.path,
+            );
+            prev_hop_pos -= 1;
+            assert_eq!(data.path[prev_hop_pos as usize], data.prev_hop);
+        }
+
+        if data.epr.target_node_id == self.node_id {
+            // This is the final target node.
+            let mut events = vec![];
+
+            // Check if there is a valid and unused EPR pair in the memory cell
+            // indicated in the request.
+            let nic = self
+                .nics_slave
+                .get_mut(&data.prev_hop)
+                .expect("received an EsRequest from an unknown peer");
+
+            if nic.check_valid(data.memory_cell, data.local_pair_id) {
+                // The memory cell is as expected from the master, the procedure
+                // can go on:
+                // 1. Lock the memory cell, so that it cannot be modified.
+                // 2. Schedule an event for when the local operations are done.
+
+                nic.used(data.memory_cell);
+
+                events.push(Event::new(
+                    self.properties.correction_duration,
+                    EventType::NodeEvent(NodeEventData::EsLocalComplete(data)),
+                ));
+            } else {
+                // The memory cell does not contain what the master expects.
+                let dst_node_id = data.prev_hop;
+                events.push(Event::new_transfer(
+                    EventType::NodeEvent(NodeEventData::EsFailure(data)),
+                    self.node_id,
+                    dst_node_id,
+                ));
+            }
+
+            (events, vec![])
+        } else {
+            // This is an intermediate node, which has to perform entanglement
+            // swapping.
+            todo!("{} {:?}: multi-hop not yet implemented", now, data)
+        }
+    }
+
+    /// Handle completion of local operations for an ES.
+    /// If the operation was a BSM:
+    /// - Decide (randomly) if successful:
+    ///   - Success: send `EsSuccess` to prev_hop.
+    ///   - Failure: send `EsFailure` to prev_hop, free local EPR pair (slave).
+    /// If the operation was a correction:
+    /// - Send `EsSuccess` to prev_hop.
+    /// - Send `EsRemoteComplete` [to be added] to source node.
+    /// - Notify `EprResponse` (is_source = false) to the local app.
+    fn handle_es_local_complete(
+        &mut self,
+        now: u64,
+        data: EsRequestData,
+    ) -> (Vec<Event>, Vec<Sample>) {
+        // XXX
+        (vec![], vec![])
+    }
+
+    /// Handle response received for an ES request.
+    /// If failed:
+    /// - Communicate failure to the source of the path.
+    /// - Free local EPR pair (master).
+    /// If success:
+    /// - Free previous EPR pair (if any).
+    /// In both cases remove the request from the pending queue
+    fn handle_es_response(
+        &mut self,
+        now: u64,
+        data: EsRequestData,
+        success: bool,
+    ) -> (Vec<Event>, Vec<Sample>) {
+        // XXX
+        (vec![], vec![])
     }
 
     /// Schedule requests pending for a given peer, if possible.
@@ -242,8 +351,8 @@ impl Node {
         log::debug!("{}", self);
         let mut events = vec![];
         if let Some(nic) = self.nics_master.get_mut(&peer) {
-            if let Some(requests) = self.pending_requests.get(&peer) {
-                for request in requests {
+            if let Some(requests) = &mut self.pending_requests.get_mut(&peer) {
+                for request in requests.iter_mut() {
                     match request.status {
                         Status::Queued => {
                             if let Some(index) = nic.newest_valid() {
@@ -251,16 +360,19 @@ impl Node {
                                     .used(index)
                                     .expect("cannot use a memory cell that is assumed to be valid")
                                     .identifier;
-                                events.push(Event::new(
-                                    0.0,
+                                events.push(Event::new_transfer(
                                     EventType::NodeEvent(NodeEventData::EsRequest(EsRequestData {
                                         epr: request.epr.clone(),
+                                        prev_hop: self.node_id,
                                         next_hop: peer,
                                         path: request.path.clone(),
                                         memory_cell: index,
                                         local_pair_id,
                                     })),
+                                    self.node_id,
+                                    peer,
                                 ));
+                                request.status = Status::WaitingForResponse;
                             } else {
                                 break;
                             }

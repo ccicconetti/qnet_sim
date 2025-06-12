@@ -32,6 +32,10 @@ pub struct NodeWeight {
     pub decay_rate: f64,
     /// Entanglement swapping success probability.
     pub swapping_success_prob: f64,
+    /// Entanglement swapping duration, in s.
+    pub swapping_duration: f64,
+    /// Duration of the local operations to correct end-to-end pairs, in s.
+    pub correction_duration: f64,
     /// Number of detectors.
     pub detectors: u32,
     /// Number of transmitters, i.e., entangled photon source generators.
@@ -60,6 +64,8 @@ impl NodeWeight {
             memory_qubits: 1,
             decay_rate: 0.0,
             swapping_success_prob: 1.0,
+            swapping_duration: 0.001,
+            correction_duration: 0.0,
             detectors: 1,
             transmitters: 1,
             capacity: 1.0,
@@ -72,6 +78,8 @@ impl NodeWeight {
             memory_qubits: 1,
             decay_rate: 0.0,
             swapping_success_prob: 1.0,
+            swapping_duration: 0.0,
+            correction_duration: 0.001,
             detectors: 1,
             transmitters: 0,
             capacity: 0.0,

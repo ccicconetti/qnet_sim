@@ -44,7 +44,7 @@ impl MemoryCell {
     }
 
     /// Return the memory cell data, unless it is empty.
-    pub fn data(&mut self) -> Option<MemoryCellData> {
+    pub fn data(&self) -> Option<MemoryCellData> {
         match self {
             MemoryCell::Empty => None,
             MemoryCell::Valid(data) | MemoryCell::Used(data) => Some(data.clone()),
@@ -221,6 +221,16 @@ impl Nic {
                 .sum::<u32>() as f64
                 / self.memory_cells.len() as f64
         }
+    }
+
+    /// Return true if the given memory cell exists, is valid, and matches
+    /// the given `identifier`.
+    pub fn check_valid(&self, index: usize, identifier: u64) -> bool {
+        if index >= self.memory_cells.len() {
+            return false;
+        }
+        self.memory_cells[index].is_valid()
+            && self.memory_cells[index].data().unwrap().identifier == identifier
     }
 
     /// Flag a memory cell as used. Return the memory cell data if successful,

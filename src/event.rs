@@ -99,6 +99,9 @@ impl std::fmt::Display for EprFiveTuple {
 pub struct EsRequestData {
     /// EPR identifier.
     pub epr: EprFiveTuple,
+    /// Prev hop node, i.e., the node that requests to perform the
+    /// entanglement swapping.
+    pub prev_hop: u32,
     /// Next hop node, i.e., the node that is requested to perform the
     /// entanglement swapping.
     pub next_hop: u32,
@@ -123,13 +126,20 @@ pub enum NodeEventData {
     /// Request to perform entanglement swapping at a node for the creation of
     /// a remote EPR.
     EsRequest(EsRequestData),
+    /// Local operations completed for an entanglement swapping.
+    EsLocalComplete(EsRequestData),
+    /// Successful response to a request to perform entanglement swapping.
+    EsSuccess(EsRequestData),
+    /// Failed response to a request to perform entanglement swapping.
+    EsFailure(EsRequestData),
 }
 
 impl NodeEventData {
     pub fn node_id(&self) -> u32 {
         match self {
             NodeEventData::EprRequestApp(data) => data.source_node_id,
-            NodeEventData::EsRequest(data) => data.next_hop,
+            NodeEventData::EsRequest(data) | NodeEventData::EsLocalComplete(data) => data.next_hop,
+            NodeEventData::EsSuccess(data) | NodeEventData::EsFailure(data) => data.prev_hop,
         }
     }
 }

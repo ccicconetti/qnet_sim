@@ -56,9 +56,19 @@ impl Network {
     ) -> Self {
         // Create the nodes.
         let mut nodes = vec![];
+
         for node_id in 0..logical_topology.graph().node_count() {
+            let node_weight = physical_topology
+                .graph()
+                .node_weight((node_id as u32).into())
+                .expect("cannot find weight of a node in the physical topology");
             nodes.push(super::node::Node::new(
                 node_id as u32,
+                super::node::NodeProperties {
+                    swapping_success_prob: node_weight.swapping_success_prob,
+                    swapping_duration: node_weight.swapping_duration,
+                    correction_duration: node_weight.correction_duration,
+                },
                 logical_topology.clone(),
             ));
         }
