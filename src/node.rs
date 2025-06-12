@@ -38,6 +38,25 @@ pub struct Node {
     pending_requests: std::collections::HashMap<u32, Vec<Request>>,
 }
 
+impl std::fmt::Display for Node {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "node_id {}", self.node_id)?;
+        for (peer, nic) in &self.nics_master {
+            writeln!(f, "NIC peer {}: {}", peer, nic)?;
+        }
+        for (peer, nic) in &self.nics_slave {
+            writeln!(f, "NIC peer {}: {}", peer, nic)?;
+        }
+        writeln!(f, "apps on ports {:?}", self.applications.keys())?;
+        for (peer, requests) in &self.pending_requests {
+            for request in requests {
+                writeln!(f, "REQ peer {}: {:?}", peer, request)?;
+            }
+        }
+        Ok(())
+    }
+}
+
 impl Node {
     /// Create a node with no NICs.
     pub fn new(
@@ -220,6 +239,7 @@ impl Node {
 
     /// Schedule requests pending for a given peer, if possible.
     fn schedule_pending_requests(&mut self, peer: u32) -> (Vec<Event>, Vec<Sample>) {
+        log::debug!("{}", self);
         let mut events = vec![];
         if let Some(nic) = self.nics_master.get_mut(&peer) {
             if let Some(requests) = self.pending_requests.get(&peer) {

@@ -82,6 +82,20 @@ impl Default for MemoryCell {
     }
 }
 
+impl std::fmt::Display for MemoryCell {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                MemoryCell::Empty => "E",
+                MemoryCell::Valid(_memory_cell_data) => "V",
+                MemoryCell::Used(_memory_cell_data) => "U",
+            }
+        )
+    }
+}
+
 impl PartialOrd for MemoryCell {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         match self {
@@ -113,6 +127,19 @@ pub enum Role {
     Slave,
 }
 
+impl std::fmt::Display for Role {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Role::Master => "M",
+                Role::Slave => "S",
+            }
+        )
+    }
+}
+
 /// Quantum network interface card associated with a single peer.
 #[derive(Debug)]
 pub struct Nic {
@@ -120,6 +147,21 @@ pub struct Nic {
     role: Role,
     /// Quantum memory cells assigned to this NIC.
     memory_cells: Vec<MemoryCell>,
+}
+
+impl std::fmt::Display for Nic {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "[{}] {}",
+            self.role,
+            self.memory_cells
+                .iter()
+                .map(|x| x.to_string())
+                .collect::<Vec<String>>()
+                .join("")
+        )
+    }
 }
 
 impl Nic {
