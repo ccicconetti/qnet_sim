@@ -25,3 +25,4 @@ conf*.json
 *.pdf
 *.csv
 docs/.$diagrams.drawio.bkp
+.DS_Store
