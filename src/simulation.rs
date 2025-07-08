@@ -207,11 +207,21 @@ impl Simulation {
                         self.network.handle(event)
                     }
                     EventType::NodeEvent(event_data) => {
-                        log::debug!("N {} {:?}", now, event_data);
+                        log::debug!(
+                            "N {} [node_id {}] {:?}",
+                            now,
+                            event.target_node_id(),
+                            event_data
+                        );
                         self.network.handle(event)
                     }
                     EventType::AppEvent(event_data) => {
-                        log::debug!("A {} {:?}", now, event_data);
+                        log::debug!(
+                            "A {} [node_id {}] {:?}",
+                            now,
+                            event.target_node_id(),
+                            event_data
+                        );
                         self.network.handle(event)
                     }
                 };

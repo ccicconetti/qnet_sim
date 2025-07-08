@@ -12,7 +12,7 @@ struct EprRequest {
     /// Neighbor node ID, used to identify the NIC, and memory cell index.
     /// If None then the application is still waiting for the OS to indicate
     /// if the EPR was established or not.
-    memory_cell: Option<(u32, crate::nic::Role, usize)>,
+    memory_cell: Option<MemoryCellId>,
     /// True if the local operations have been done.
     local_operations_done: bool,
     /// True if the remote operations have been done.
@@ -212,18 +212,15 @@ impl Client {
         request.local_operations_done = true;
 
         // Compute the fidelity on the local end of this EPR.
-        let memory_cell = std::mem::take(&mut request.memory_cell);
-        let (neighbor_node_id, role, index) = memory_cell
+        let memory_cell_id = std::mem::take(&mut request.memory_cell)
             .unwrap_or_else(|| panic!("local operation completed on a failed request {}", epr));
         events.push(Event::new(
             0.0,
-            EventType::NetworkEvent(NetworkEventData::EprFidelity(EprFidelityData {
-                app_node_id: this_node_id,
-                port: this_port,
+            EventType::NetworkEvent(NetworkEventData::EprConsume(EprConsumeData {
+                req_app_node_id: this_node_id,
+                req_app_port: this_port,
                 consume_node_id: this_node_id,
-                neighbor_node_id,
-                role,
-                index,
+                memory_cell_id,
             })),
         ));
 
@@ -285,6 +282,7 @@ mod tests {
     use crate::event::Event;
     use crate::event::EventHandler;
     use crate::event::EventType;
+    use crate::event::MemoryCellId;
     use crate::event::NetworkEventData;
     use crate::event::NodeEventData;
     use crate::nic;
@@ -321,7 +319,7 @@ mod tests {
 
     fn is_node_epr_fidelity(event: &EventType) -> bool {
         if let EventType::NetworkEvent(data) = event {
-            matches!(data, NetworkEventData::EprFidelity(_))
+            matches!(data, NetworkEventData::EprConsume(_))
         } else {
             false
         }
@@ -373,7 +371,11 @@ mod tests {
                 1.0,
                 EventType::AppEvent(AppEventData::EprResponse(EprResponseData {
                     epr: five_tuple.clone(),
-                    memory_cell: Some((2, nic::Role::Master, 0)),
+                    memory_cell: Some(MemoryCellId {
+                        neighbor_node_id: 2,
+                        role: nic::Role::Master,
+                        index: 0,
+                    }),
                     is_source: true,
                 })),
             ))

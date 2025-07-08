@@ -94,17 +94,15 @@ impl Pinger {
         let mut data = data;
 
         // Compute the fidelity on the local end of this EPR.
-        let memory_cell = std::mem::take(&mut data.memory_cell);
-        let (neighbor_node_id, role, index) = memory_cell.expect("empty memory cell received");
+        let memory_cell_id = std::mem::take(&mut data.memory_cell)
+            .unwrap_or_else(|| panic!("empty memory cell received"));
         events.push(Event::new(
             0.0,
-            EventType::NetworkEvent(NetworkEventData::EprFidelity(EprFidelityData {
-                app_node_id: self.this_node_id,
-                port: self.this_port,
+            EventType::NetworkEvent(NetworkEventData::EprConsume(EprConsumeData {
+                req_app_node_id: self.this_node_id,
+                req_app_port: self.this_port,
                 consume_node_id: self.this_node_id,
-                neighbor_node_id,
-                role,
-                index,
+                memory_cell_id,
             })),
         ));
 

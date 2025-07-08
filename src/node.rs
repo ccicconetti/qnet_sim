@@ -3,11 +3,12 @@
 
 use crate::event::*;
 use crate::output::Sample;
+use rand::{Rng, SeedableRng};
 
 #[derive(Debug, Clone)]
 enum Status {
     Queued,
-    WaitingForResponse,
+    WaitingForResponse(MemoryCellId),
 }
 
 #[derive(Debug, Clone)]
@@ -48,6 +49,8 @@ pub struct Node {
     logical_topology: std::rc::Rc<crate::logical_topology::LogicalTopology>,
     /// Pending requests grouped by peer.
     pending_requests: std::collections::HashMap<u32, Vec<Request>>,
+    /// Pseudo-random number generator.
+    rng: rand::rngs::StdRng,
 }
 
 impl std::fmt::Display for Node {
@@ -75,6 +78,7 @@ impl Node {
         node_id: u32,
         properties: NodeProperties,
         logical_topology: std::rc::Rc<crate::logical_topology::LogicalTopology>,
+        init_seed: u64,
     ) -> Self {
         Self {
             node_id,
@@ -84,6 +88,7 @@ impl Node {
             applications: std::collections::HashMap::new(),
             logical_topology,
             pending_requests: std::collections::HashMap::new(),
+            rng: rand::rngs::StdRng::seed_from_u64(init_seed + node_id as u64),
         }
     }
 
@@ -195,11 +200,13 @@ impl Node {
         let now = event.time();
         if let EventType::NodeEvent(data) = event.event_type {
             match data {
-                NodeEventData::EprRequestApp(epr) => self.handle_epr_request_app(now, epr),
+                NodeEventData::EprRequestApp(epr) => self.handle_epr_request_app(now, now, epr),
                 NodeEventData::EsRequest(data) => self.handle_es_request(now, data),
                 NodeEventData::EsLocalComplete(data) => self.handle_es_local_complete(now, data),
                 NodeEventData::EsSuccess(data) => self.handle_es_response(now, data, true),
                 NodeEventData::EsFailure(data) => self.handle_es_response(now, data, false),
+                NodeEventData::EsRemoteComplete(data) => self.handle_es_remote_complete(now, data),
+                NodeEventData::EsRemoteFailed(data) => self.handle_es_remote_failed(now, data),
             }
         } else {
             panic!(
@@ -210,7 +217,16 @@ impl Node {
     }
 
     /// Handle EPR request from an application on this node.
-    fn handle_epr_request_app(&mut self, now: u64, epr: EprFiveTuple) -> (Vec<Event>, Vec<Sample>) {
+    ///
+    /// - `now`: the current simulated time
+    /// - `received`: the time when the request was originally received
+    /// - `epr`: the EPR to be established
+    fn handle_epr_request_app(
+        &mut self,
+        now: u64,
+        received: u64,
+        epr: EprFiveTuple,
+    ) -> (Vec<Event>, Vec<Sample>) {
         assert_ne!(
             epr.source_node_id, epr.target_node_id,
             "src and dst nodes must be different"
@@ -239,7 +255,7 @@ impl Node {
             .entry(peer)
             .or_default()
             .push(Request {
-                received: now,
+                received,
                 epr: epr,
                 status: Status::Queued,
                 path,
@@ -289,8 +305,28 @@ impl Node {
 
                 nic.used(data.memory_cell);
 
+                // If this is a single hop EPR request, then the EPR pair can
+                // be used immediately. Otherwise, X/Z corrections might be
+                // necessary dependin on the outcome of the BSM operations
+                // along the path.
+                let event_delay = if data.path.len() > 2 {
+                    let rand = self.rng.gen_range(0..4);
+                    if rand == 0 {
+                        // no corrections
+                        0.0
+                    } else if rand == 1 {
+                        // both X and Z corrections
+                        self.properties.correction_duration * 2.0
+                    } else {
+                        // only X or Z correction
+                        self.properties.correction_duration
+                    }
+                } else {
+                    0.0
+                };
+
                 events.push(Event::new(
-                    self.properties.correction_duration,
+                    event_delay,
                     EventType::NodeEvent(NodeEventData::EsLocalComplete(data)),
                 ));
             } else {
@@ -312,21 +348,50 @@ impl Node {
     }
 
     /// Handle completion of local operations for an ES.
-    /// If the operation was a BSM:
-    /// - Decide (randomly) if successful:
-    ///   - Success: send `EsSuccess` to prev_hop.
-    ///   - Failure: send `EsFailure` to prev_hop, free local EPR pair (slave).
+    /// If the operation was a BSM, decide (randomly) if successful:
+    /// - Success: send `EsSuccess` to prev_hop.
+    /// - Failure: send `EsFailure` to prev_hop, free local EPR pair (slave).
     /// If the operation was a correction:
-    /// - Send `EsSuccess` to prev_hop.
-    /// - Send `EsRemoteComplete` [to be added] to source node.
+    /// - Send `EsRemoteComplete` to source node.
     /// - Notify `EprResponse` (is_source = false) to the local app.
     fn handle_es_local_complete(
         &mut self,
         now: u64,
         data: EsRequestData,
     ) -> (Vec<Event>, Vec<Sample>) {
-        // XXX
-        (vec![], vec![])
+        assert_eq!(self.node_id, data.next_hop);
+        assert!(data.path.len() >= 2);
+
+        let mut events = vec![];
+        if self.node_id == *data.path.last().unwrap() {
+            // This node is the last element in the path, which means that the
+            // local operation was an X/Z correction, which never fails.
+            let src_node_id = *data.path.first().unwrap();
+            let epr = data.epr.clone();
+            events.push(Event::new_transfer(
+                EventType::NodeEvent(NodeEventData::EsRemoteComplete(data.epr)),
+                self.node_id,
+                src_node_id,
+            ));
+            let memory_cell = Some(MemoryCellId {
+                neighbor_node_id: data.prev_hop,
+                role: super::nic::Role::Slave,
+                index: data.memory_cell,
+            });
+            events.push(Event::new(
+                0.0_f64,
+                EventType::AppEvent(AppEventData::EprResponse(EprResponseData {
+                    epr,
+                    is_source: false,
+                    memory_cell,
+                })),
+            ));
+        } else {
+            // XXX
+            todo!("{} {:?}: multi-hop not yet implemented", now, data)
+        }
+
+        (events, vec![])
     }
 
     /// Handle response received for an ES request.
@@ -343,6 +408,75 @@ impl Node {
         success: bool,
     ) -> (Vec<Event>, Vec<Sample>) {
         // XXX
+        (vec![], vec![])
+    }
+
+    /// Handle indication at the source node that a remote entanglement
+    /// swapping procedure is complete (and successful).
+    ///
+    /// Search for a pending request with matching `EprFiveTuple` and, if found,
+    /// notify `EprResponse` (is_source = true) to the application.
+    fn handle_es_remote_complete(
+        &mut self,
+        now: u64,
+        epr: EprFiveTuple,
+    ) -> (Vec<Event>, Vec<Sample>) {
+        assert_eq!(self.node_id, epr.source_node_id);
+
+        for (_peer, requests) in &mut self.pending_requests {
+            if let Some(epr_ndx) = requests.iter().position(|x| x.epr == epr) {
+                let request = requests.swap_remove(epr_ndx);
+                if let Status::WaitingForResponse(memory_cell) = request.status {
+                    let events = vec![Event::new(
+                        0.0_f64,
+                        EventType::AppEvent(AppEventData::EprResponse(EprResponseData {
+                            epr,
+                            is_source: true,
+                            memory_cell: Some(memory_cell),
+                        })),
+                    )];
+                    return (
+                        events,
+                        vec![Sample::Series(
+                            "epr-request-latency-node,epr-request-latency-length".to_string(),
+                            format!("{},{}", self.node_id, request.path.len()),
+                            crate::utils::to_seconds(now - request.received),
+                        )],
+                    );
+                } else {
+                    panic!(
+                        "wrong queued request at node {} for EPR {}: {:?}",
+                        self.node_id, epr, request
+                    );
+                }
+            }
+        }
+
+        panic!(
+            "could not find a queued request at node {} for EPR {}",
+            self.node_id, epr
+        )
+    }
+
+    /// Handle indication at the source node that a remote entanglement
+    /// swapping procedure has failed.
+    ///
+    /// Search for a pending request with matching `EprFiveTuple` and, if found,
+    /// free the local EPR pair and reschedule the end-to-end request.
+    fn handle_es_remote_failed(
+        &mut self,
+        now: u64,
+        epr: EprFiveTuple,
+    ) -> (Vec<Event>, Vec<Sample>) {
+        assert_eq!(self.node_id, epr.source_node_id);
+
+        for (_peer, requests) in &mut self.pending_requests {
+            if let Some(epr_ndx) = requests.iter().position(|x| x.epr == epr) {
+                let request = requests.swap_remove(epr_ndx);
+                return self.handle_epr_request_app(now, request.received, request.epr);
+            }
+        }
+
         (vec![], vec![])
     }
 
@@ -372,7 +506,11 @@ impl Node {
                                     self.node_id,
                                     peer,
                                 ));
-                                request.status = Status::WaitingForResponse;
+                                request.status = Status::WaitingForResponse(MemoryCellId {
+                                    neighbor_node_id: peer,
+                                    role: crate::nic::Role::Master,
+                                    index,
+                                });
                             } else {
                                 break;
                             }

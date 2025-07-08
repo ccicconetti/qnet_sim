@@ -10,9 +10,17 @@ use crate::output::Sample;
 
 #[derive(Debug)]
 pub struct EprGenerator {
+    /// Identifier of the node that creates the EPR pairs between
+    /// `master_node_id` and `slave_node_id`, using (in reality) an entangled
+    /// photon generator source.
     tx_node_id: u32,
+    /// Identifier of the node playing the master role in the logical
+    /// topology link.
     master_node_id: u32,
+    /// Identifier of the node playing the slave role in the logical
+    /// topology link.
     slave_node_id: u32,
+    /// Exponentially distributed r.v. to generate the inter-arrival times.
     rv: rand_distr::Exp<f64>,
     /// Pseudo-random number generator.
     rng: rand::rngs::StdRng,
@@ -70,6 +78,7 @@ impl Network {
                     correction_duration: node_weight.correction_duration,
                 },
                 logical_topology.clone(),
+                init_seed,
             ));
         }
 
@@ -147,7 +156,7 @@ impl Network {
             match data {
                 NetworkEventData::EprGenerated(data) => self.handle_epr_generated(now, data),
                 NetworkEventData::EprNotified(data) => self.handle_epr_notified(now, data),
-                NetworkEventData::EprFidelity(data) => self.handle_epr_fidelity(now, data),
+                NetworkEventData::EprConsume(data) => self.handle_epr_consume(now, data),
             }
         } else {
             panic!(
@@ -253,16 +262,14 @@ impl Network {
         )
     }
 
-    fn handle_epr_fidelity(
-        &mut self,
-        now: u64,
-        data: EprFidelityData,
-    ) -> (Vec<Event>, Vec<Sample>) {
+    /// Consume the half EPR and compute its fidelity.
+    fn handle_epr_consume(&mut self, now: u64, data: EprConsumeData) -> (Vec<Event>, Vec<Sample>) {
         assert!(data.consume_node_id <= self.nodes.len() as u32);
+
         let fidelity = if let Some(cell) = self.nodes[data.consume_node_id as usize].consume(
             data.consume_node_id,
-            &data.role,
-            data.index,
+            &data.memory_cell_id.role,
+            data.memory_cell_id.index,
         ) {
             if let Some(weight) = self
                 .physical_topology
@@ -293,7 +300,7 @@ impl Network {
             vec![],
             vec![Sample::Series(
                 "fidelity-node,fidelity-port".to_string(),
-                format!("{},{}", data.app_node_id, data.port),
+                format!("{},{}", data.req_app_node_id, data.req_app_port),
                 fidelity,
             )],
         )

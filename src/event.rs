@@ -18,20 +18,28 @@ pub struct EprNotifiedData {
     pub epr_pair_id: u64,
 }
 
+/// Quantum memory cell identifier.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct MemoryCellId {
+    /// Neighbor node ID, used to identify the NIC, and memory cell index.
+    pub neighbor_node_id: u32,
+    /// Role in this logical link.
+    pub role: crate::nic::Role,
+    /// Memory cell index.
+    pub index: usize,
+}
+
 #[derive(Debug, PartialEq, Eq)]
-pub struct EprFidelityData {
-    /// ID of the node where the application runs.
-    pub app_node_id: u32,
-    /// Port where the application runs.
-    pub port: u16,
+pub struct EprConsumeData {
+    /// ID of the node running the application that requested the EPR.
+    /// Used only for
+    pub req_app_node_id: u32,
+    /// Port of the application that requested the EPR.
+    pub req_app_port: u16,
     /// ID of the node that consumes the EPR.
     pub consume_node_id: u32,
-    /// ID of the neighbor to identify the NIC.
-    pub neighbor_node_id: u32,
-    /// Role of the consuming node.
-    pub role: crate::nic::Role,
-    /// Index of the memory cell in the NIC.
-    pub index: usize,
+    /// Quantum memory cell identifier.
+    pub memory_cell_id: MemoryCellId,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -40,8 +48,8 @@ pub enum NetworkEventData {
     EprGenerated(EprGeneratedData),
     /// EPR pair notified at a node.
     EprNotified(EprNotifiedData),
-    /// Measure fidelity of a given EPR pair.
-    EprFidelity(EprFidelityData),
+    /// Consume a half EPR pair and measure its fidelity.
+    EprConsume(EprConsumeData),
 }
 
 /// Every EPR request is uniquely identified by the five-tuple:
@@ -125,19 +133,38 @@ pub enum NodeEventData {
     EprRequestApp(EprFiveTuple),
     /// Request to perform entanglement swapping at a node for the creation of
     /// a remote EPR.
+    /// Created by a node, consumed by the logical peer that is the next hop
+    /// towards the destination.
     EsRequest(EsRequestData),
     /// Local operations completed for an entanglement swapping.
+    /// Created by a node when a local operation (BSM or X/Z correction) is
+    /// required, consumed by the same node when the operation is completed
+    /// (successfully or with failure is decided by the handler of this event).
     EsLocalComplete(EsRequestData),
     /// Successful response to a request to perform entanglement swapping.
+    /// Created by a node, consumed by the logical peer that is the previous
+    /// hop in the path from the source to the destination of the ES.
     EsSuccess(EsRequestData),
     /// Failed response to a request to perform entanglement swapping.
+    /// Created by a node, consumed by the logical peer that is the previous
+    /// hop in the path from the source to the destination of the ES.
     EsFailure(EsRequestData),
+    /// Entanglement swapping operation failed.
+    /// Created by the node where end-to-end EPR creation fails.
+    /// Consumed by the nodes along the path from the source to this node
+    /// that have pending resources to be freed.
+    EsRemoteFailed(EprFiveTuple),
+    /// Entanglement swapping operation completed successfully.
+    /// Created by the destination node. Consumed by the source node.
+    EsRemoteComplete(EprFiveTuple),
 }
 
 impl NodeEventData {
     pub fn node_id(&self) -> u32 {
         match self {
-            NodeEventData::EprRequestApp(data) => data.source_node_id,
+            NodeEventData::EprRequestApp(data)
+            | NodeEventData::EsRemoteComplete(data)
+            | NodeEventData::EsRemoteFailed(data) => data.source_node_id,
             NodeEventData::EsRequest(data) | NodeEventData::EsLocalComplete(data) => data.next_hop,
             NodeEventData::EsSuccess(data) | NodeEventData::EsFailure(data) => data.prev_hop,
         }
@@ -153,7 +180,7 @@ pub struct EprResponseData {
     pub is_source: bool,
     /// Neighbor node ID, used to identify the NIC, and memory cell index.
     /// If None then the request failed.
-    pub memory_cell: Option<(u32, crate::nic::Role, usize)>,
+    pub memory_cell: Option<MemoryCellId>,
 }
 
 #[derive(Debug, PartialEq, Eq)]

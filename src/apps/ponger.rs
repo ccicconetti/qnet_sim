@@ -4,18 +4,6 @@
 use crate::event::*;
 use crate::output::Sample;
 
-#[derive(Debug)]
-struct EprResponse {
-    /// Neighbor node ID, used to identify the NIC, and memory cell index.
-    /// If None then the application is still waiting for the OS to indicate
-    /// if the EPR was established or not.
-    memory_cell: (u32, crate::nic::Role, usize),
-    /// Client node ID.
-    client_node_id: u32,
-    /// Client port number.
-    client_port: u16,
-}
-
 /// Ponger application, that simply replies to any requesting an EPR and
 /// measures the fidelity immediately.
 #[derive(Debug)]
@@ -54,17 +42,15 @@ impl Ponger {
             "received EPR response not addressed to this port"
         );
 
-        if let Some((neighbor_node_id, role, index)) = data.memory_cell {
+        if let Some(memory_cell_id) = data.memory_cell {
             (
                 vec![Event::new(
                     0.0,
-                    EventType::NetworkEvent(NetworkEventData::EprFidelity(EprFidelityData {
-                        app_node_id: data.epr.source_node_id,
-                        port: data.epr.source_port,
+                    EventType::NetworkEvent(NetworkEventData::EprConsume(EprConsumeData {
+                        req_app_node_id: data.epr.source_node_id,
+                        req_app_port: data.epr.source_port,
                         consume_node_id: self.this_node_id.clone(),
-                        neighbor_node_id,
-                        role,
-                        index,
+                        memory_cell_id,
                     })),
                 )],
                 vec![],

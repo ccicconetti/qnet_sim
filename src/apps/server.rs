@@ -9,10 +9,10 @@ use crate::output::Sample;
 
 #[derive(Debug)]
 struct EprResponse {
-    /// Neighbor node ID, used to identify the NIC, and memory cell index.
+    /// Quantum memory cell identifier.
     /// If None then the application is still waiting for the OS to indicate
     /// if the EPR was established or not.
-    memory_cell: (u32, crate::nic::Role, usize),
+    memory_cell: MemoryCellId,
     /// Client node ID.
     client_node_id: u32,
     /// Client port number.
@@ -120,16 +120,14 @@ impl Server {
         assert_eq!(epr.source_port, request.client_port);
 
         // Compute the fidelity on the local end of this EPR.
-        let (neighbor_node_id, role, index) = request.memory_cell;
+        let memory_cell_id = request.memory_cell;
         events.push(Event::new(
             0.0,
-            EventType::NetworkEvent(NetworkEventData::EprFidelity(EprFidelityData {
-                app_node_id: request.client_node_id,
-                port: request.client_port,
+            EventType::NetworkEvent(NetworkEventData::EprConsume(EprConsumeData {
+                req_app_node_id: request.client_node_id,
+                req_app_port: request.client_port,
                 consume_node_id: self.this_node_id.clone(),
-                neighbor_node_id,
-                role,
-                index,
+                memory_cell_id,
             })),
         ));
 
@@ -175,6 +173,7 @@ mod tests {
     use crate::event::Event;
     use crate::event::EventHandler;
     use crate::event::EventType;
+    use crate::event::MemoryCellId;
     use crate::event::NetworkEventData;
     use crate::nic;
 
@@ -206,7 +205,7 @@ mod tests {
 
     fn is_node_epr_fidelity(event: &EventType) -> bool {
         if let EventType::NetworkEvent(data) = event {
-            matches!(data, NetworkEventData::EprFidelity(_))
+            matches!(data, NetworkEventData::EprConsume(_))
         } else {
             false
         }
@@ -235,7 +234,11 @@ mod tests {
                 1.0,
                 EventType::AppEvent(AppEventData::EprResponse(EprResponseData {
                     epr: five_tuple.clone(),
-                    memory_cell: Some((2, nic::Role::Master, 0)),
+                    memory_cell: Some(MemoryCellId {
+                        neighbor_node_id: 2,
+                        role: nic::Role::Master,
+                        index: 0,
+                    }),
                     is_source: false,
                 })),
             ))
