@@ -190,9 +190,10 @@ impl Node {
 
     /// Return the NIC for a given peer node and role.
     fn get_nic(&mut self, peer_node_id: u32, role: &super::nic::Role) -> &mut super::nic::Nic {
-        self.nics(role)
-            .get_mut(&peer_node_id)
-            .unwrap_or_else(|| panic!("could not find NIC for peer {peer_node_id} ({role:?})"))
+        let this_node_id = self.node_id;
+        self.nics(role).get_mut(&peer_node_id).unwrap_or_else(|| {
+            panic!("node {this_node_id}: could not find NIC for peer {peer_node_id} ({role:?})")
+        })
     }
 
     /// Handle local events.

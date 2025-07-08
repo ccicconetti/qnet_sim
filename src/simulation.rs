@@ -184,6 +184,13 @@ impl Simulation {
                 num_events += 1;
 
                 // handle the current event
+                let mut transfer_info = String::default();
+                if let Some(transfer) = &event.transfer {
+                    if !transfer.done {
+                        transfer_info =
+                            format!(" ({}->{})", transfer.src_node_id, transfer.dst_node_id);
+                    }
+                };
                 let (new_events, new_samples) = match &event.event_type {
                     EventType::WarmupPeriodEnd => {
                         log::debug!("W {}", now);
@@ -208,18 +215,20 @@ impl Simulation {
                     }
                     EventType::NodeEvent(event_data) => {
                         log::debug!(
-                            "N {} [node_id {}] {:?}",
+                            "N {} [node_id {}{}] {:?}",
                             now,
                             event.target_node_id(),
+                            transfer_info,
                             event_data
                         );
                         self.network.handle(event)
                     }
                     EventType::AppEvent(event_data) => {
                         log::debug!(
-                            "A {} [node_id {}] {:?}",
+                            "A {} [node_id {}{}] {:?}",
                             now,
                             event.target_node_id(),
+                            transfer_info,
                             event_data
                         );
                         self.network.handle(event)

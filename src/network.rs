@@ -267,7 +267,7 @@ impl Network {
         assert!(data.consume_node_id <= self.nodes.len() as u32);
 
         let fidelity = if let Some(cell) = self.nodes[data.consume_node_id as usize].consume(
-            data.consume_node_id,
+            data.memory_cell_id.neighbor_node_id,
             &data.memory_cell_id.role,
             data.memory_cell_id.index,
         ) {
