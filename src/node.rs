@@ -57,15 +57,15 @@ impl std::fmt::Display for Node {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "node_id {}", self.node_id)?;
         for (peer, nic) in &self.nics_master {
-            writeln!(f, "NIC peer {}: {}", peer, nic)?;
+            writeln!(f, "NIC peer {peer}: {nic}")?;
         }
         for (peer, nic) in &self.nics_slave {
-            writeln!(f, "NIC peer {}: {}", peer, nic)?;
+            writeln!(f, "NIC peer {peer}: {nic}")?;
         }
         writeln!(f, "apps on ports {:?}", self.applications.keys())?;
         for (peer, requests) in &self.pending_requests {
             for request in requests {
-                writeln!(f, "REQ peer {}: {:?}", peer, request)?;
+                writeln!(f, "REQ peer {peer}: {request:?}")?;
             }
         }
         Ok(())
@@ -159,7 +159,7 @@ impl Node {
 
         samples.push(Sample::Series(
             "occupancy".to_string(),
-            format!("{}-{}", self.node_id.to_string(), peer_node_id.to_string()),
+            format!("{}-{}", self.node_id, peer_node_id),
             occupancy,
         ));
 
@@ -192,7 +192,7 @@ impl Node {
     fn get_nic(&mut self, peer_node_id: u32, role: &super::nic::Role) -> &mut super::nic::Nic {
         self.nics(role)
             .get_mut(&peer_node_id)
-            .unwrap_or_else(|| panic!("could not find NIC for peer {} ({:?})", peer_node_id, role))
+            .unwrap_or_else(|| panic!("could not find NIC for peer {peer_node_id} ({role:?})"))
     }
 
     /// Handle local events.
@@ -256,7 +256,7 @@ impl Node {
             .or_default()
             .push(Request {
                 received,
-                epr: epr,
+                epr,
                 status: Status::Queued,
                 path,
             });
@@ -348,9 +348,11 @@ impl Node {
     }
 
     /// Handle completion of local operations for an ES.
+    ///
     /// If the operation was a BSM, decide (randomly) if successful:
     /// - Success: send `EsSuccess` to prev_hop.
     /// - Failure: send `EsFailure` to prev_hop, free local EPR pair (slave).
+    ///
     /// If the operation was a correction:
     /// - Send `EsRemoteComplete` to source node.
     /// - Notify `EprResponse` (is_source = false) to the local app.
@@ -395,11 +397,14 @@ impl Node {
     }
 
     /// Handle response received for an ES request.
+    ///
     /// If failed:
     /// - Communicate failure to the source of the path.
     /// - Free local EPR pair (master).
+    ///
     /// If success:
     /// - Free previous EPR pair (if any).
+    ///
     /// In both cases remove the request from the pending queue
     fn handle_es_response(
         &mut self,
@@ -423,7 +428,7 @@ impl Node {
     ) -> (Vec<Event>, Vec<Sample>) {
         assert_eq!(self.node_id, epr.source_node_id);
 
-        for (_peer, requests) in &mut self.pending_requests {
+        for requests in &mut self.pending_requests.values_mut() {
             if let Some(epr_ndx) = requests.iter().position(|x| x.epr == epr) {
                 let request = requests.swap_remove(epr_ndx);
                 if let Status::WaitingForResponse(memory_cell) = request.status {
@@ -470,7 +475,7 @@ impl Node {
     ) -> (Vec<Event>, Vec<Sample>) {
         assert_eq!(self.node_id, epr.source_node_id);
 
-        for (_peer, requests) in &mut self.pending_requests {
+        for requests in &mut self.pending_requests.values_mut() {
             if let Some(epr_ndx) = requests.iter().position(|x| x.epr == epr) {
                 let request = requests.swap_remove(epr_ndx);
                 return self.handle_epr_request_app(now, request.received, request.epr);
@@ -487,35 +492,32 @@ impl Node {
         if let Some(nic) = self.nics_master.get_mut(&peer) {
             if let Some(requests) = &mut self.pending_requests.get_mut(&peer) {
                 for request in requests.iter_mut() {
-                    match request.status {
-                        Status::Queued => {
-                            if let Some(index) = nic.newest_valid() {
-                                let local_pair_id = nic
-                                    .used(index)
-                                    .expect("cannot use a memory cell that is assumed to be valid")
-                                    .identifier;
-                                events.push(Event::new_transfer(
-                                    EventType::NodeEvent(NodeEventData::EsRequest(EsRequestData {
-                                        epr: request.epr.clone(),
-                                        prev_hop: self.node_id,
-                                        next_hop: peer,
-                                        path: request.path.clone(),
-                                        memory_cell: index,
-                                        local_pair_id,
-                                    })),
-                                    self.node_id,
-                                    peer,
-                                ));
-                                request.status = Status::WaitingForResponse(MemoryCellId {
-                                    neighbor_node_id: peer,
-                                    role: crate::nic::Role::Master,
-                                    index,
-                                });
-                            } else {
-                                break;
-                            }
+                    if let Status::Queued = request.status {
+                        if let Some(index) = nic.newest_valid() {
+                            let local_pair_id = nic
+                                .used(index)
+                                .expect("cannot use a memory cell that is assumed to be valid")
+                                .identifier;
+                            events.push(Event::new_transfer(
+                                EventType::NodeEvent(NodeEventData::EsRequest(EsRequestData {
+                                    epr: request.epr.clone(),
+                                    prev_hop: self.node_id,
+                                    next_hop: peer,
+                                    path: request.path.clone(),
+                                    memory_cell: index,
+                                    local_pair_id,
+                                })),
+                                self.node_id,
+                                peer,
+                            ));
+                            request.status = Status::WaitingForResponse(MemoryCellId {
+                                neighbor_node_id: peer,
+                                role: crate::nic::Role::Master,
+                                index,
+                            });
+                        } else {
+                            break;
                         }
-                        _ => {}
                     }
                 }
             }

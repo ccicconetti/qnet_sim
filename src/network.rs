@@ -287,13 +287,13 @@ impl Network {
                         crate::utils::to_seconds(now - updated),
                     )
                 } else {
-                    panic!("EPR pair not found {:?}", data);
+                    panic!("EPR pair not found {data:?}");
                 }
             } else {
-                panic!("no such node {:?}", data);
+                panic!("no such node {data:?}");
             }
         } else {
-            panic!("no EPR found at {:?}", data);
+            panic!("no EPR found at {data:?}");
         };
 
         (

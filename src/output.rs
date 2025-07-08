@@ -218,7 +218,7 @@ pub fn save_outputs(
         for (name, elem) in &output.series.series {
             let mut series_file = crate::utils::open_output_file(
                 output_path,
-                format!("{}.csv", name).as_str(),
+                format!("{name}.csv").as_str(),
                 append,
                 format!(
                     "{}{},{},time,value",

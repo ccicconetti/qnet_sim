@@ -134,7 +134,7 @@ impl EventHandler for Pinger {
                     self.handle_epr_request(now, node_id, port)
                 }
                 AppEventData::EprResponse(data) => self.handle_epr_response(now, data),
-                _ => panic!("invalid application event received by a pinger: {:?}", data),
+                _ => panic!("invalid application event received by a pinger: {data:?}"),
             },
             _ => panic!("invalid event {:?} received by a pinger", event.event_type),
         }

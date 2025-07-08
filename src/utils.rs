@@ -44,7 +44,7 @@ pub fn open_output_file(
     append: bool,
     header: &str,
 ) -> anyhow::Result<std::fs::File> {
-    let full_path = format!("{}{}", path, filename);
+    let full_path = format!("{path}{filename}");
 
     if let Some(parent_path) = std::path::Path::new(&full_path).parent() {
         if parent_path.exists() {
@@ -71,7 +71,7 @@ pub fn open_output_file(
         .truncate(!append)
         .open(full_path)?;
     if add_header {
-        writeln!(&mut f, "{}", header)?;
+        writeln!(&mut f, "{header}")?;
     }
     Ok(f)
 }
@@ -80,7 +80,7 @@ pub fn struct_to_csv<T: Serialize>(s: T) -> anyhow::Result<String> {
     let fields = struct_to_map(s)?;
     let mut ret = vec![];
     for (_name, value) in fields {
-        ret.push(format!("{}", value));
+        ret.push(format!("{value}"));
     }
     Ok(ret.join(","))
 }

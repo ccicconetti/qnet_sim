@@ -68,9 +68,8 @@ impl MemoryCell {
 
     /// Mark the cell as used if it was valid, otherwise do nothing.
     pub fn used(&mut self) {
-        match self {
-            MemoryCell::Valid(data) => *self = MemoryCell::Used(data.clone()),
-            _ => {}
+        if let MemoryCell::Valid(data) = self {
+            *self = MemoryCell::Used(data.clone())
         }
     }
 }
@@ -196,7 +195,7 @@ impl Nic {
             return true;
         }
 
-        return false;
+        false
     }
 
     /// Consume an EPR pair. Return None if the index is invalid or the memory
@@ -212,7 +211,7 @@ impl Nic {
     /// Return the occupancy of the NIC, i.e., the number of non-empty memory
     /// cells divided by the total number of cells.
     pub fn occupancy(&mut self) -> f64 {
-        if self.memory_cells.len() == 0 {
+        if self.memory_cells.is_empty() {
             0.0
         } else {
             self.memory_cells

@@ -197,9 +197,9 @@ impl StaticFidelities {
         let mut errors = vec![];
         for (fidelity, name) in fidelities {
             if fidelity < 0.0 {
-                errors.push(format!("{} fidelity ({}) is < 0", fidelity, name));
+                errors.push(format!("{fidelity} fidelity ({name}) is < 0"));
             } else if fidelity > 1.0 {
-                errors.push(format!("{} fidelity ({}) is > 1", fidelity, name));
+                errors.push(format!("{fidelity} fidelity ({name}) is > 1"));
             }
         }
         if !errors.is_empty() {
@@ -232,7 +232,7 @@ impl Default for GridParams {
     }
 }
 
-fn err_if_not_empty(errors: &Vec<String>) -> anyhow::Result<()> {
+fn err_if_not_empty(errors: &[String]) -> anyhow::Result<()> {
     if !errors.is_empty() {
         anyhow::bail!(
             "invalid physical topology grid parameters: {}",

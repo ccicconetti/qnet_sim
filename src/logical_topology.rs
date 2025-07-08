@@ -120,9 +120,7 @@ impl LogicalTopology {
         let paths = self.paths.get(&src);
         assert!(
             paths.is_some(),
-            "could not find path from {} to {} in the logical topology",
-            src,
-            dst
+            "could not find path from {src} to {dst} in the logical topology"
         );
         let paths = paths.unwrap();
         assert!(paths.predecessors.len() == self.graph.node_count());

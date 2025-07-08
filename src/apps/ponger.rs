@@ -49,7 +49,7 @@ impl Ponger {
                     EventType::NetworkEvent(NetworkEventData::EprConsume(EprConsumeData {
                         req_app_node_id: data.epr.source_node_id,
                         req_app_port: data.epr.source_port,
-                        consume_node_id: self.this_node_id.clone(),
+                        consume_node_id: self.this_node_id,
                         memory_cell_id,
                     })),
                 )],
@@ -69,7 +69,7 @@ impl EventHandler for Ponger {
         match event.event_type {
             EventType::AppEvent(data) => match data {
                 AppEventData::EprResponse(data) => self.handle_epr_response(data),
-                _ => panic!("invalid event received by a ponger: {:?}", data),
+                _ => panic!("invalid event received by a ponger: {data:?}"),
             },
             _ => panic!("invalid event {:?} received by a ponger", event.event_type),
         }

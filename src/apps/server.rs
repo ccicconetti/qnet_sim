@@ -114,7 +114,7 @@ impl Server {
         let request = self
             .pending
             .remove(&epr.request_id)
-            .unwrap_or_else(|| panic!("non-existing pending request {}", epr));
+            .unwrap_or_else(|| panic!("non-existing pending request {epr}"));
 
         assert_eq!(epr.source_node_id, request.client_node_id);
         assert_eq!(epr.source_port, request.client_port);
@@ -126,7 +126,7 @@ impl Server {
             EventType::NetworkEvent(NetworkEventData::EprConsume(EprConsumeData {
                 req_app_node_id: request.client_node_id,
                 req_app_port: request.client_port,
-                consume_node_id: self.this_node_id.clone(),
+                consume_node_id: self.this_node_id,
                 memory_cell_id,
             })),
         ));
@@ -150,7 +150,7 @@ impl EventHandler for Server {
             EventType::AppEvent(data) => match data {
                 AppEventData::EprResponse(data) => self.handle_epr_response(data),
                 AppEventData::LocalComplete(epr) => self.handle_local_complete(now, epr),
-                _ => panic!("invalid event received by a server: {:?}", data),
+                _ => panic!("invalid event received by a server: {data:?}"),
             },
             _ => panic!(
                 "invalid event {:?} received by a Application object",

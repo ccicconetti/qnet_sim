@@ -90,7 +90,7 @@ impl Client {
 
         self.pending
             .get_mut(&epr.request_id)
-            .unwrap_or_else(|| panic!("non-existing pending request {}", epr))
+            .unwrap_or_else(|| panic!("non-existing pending request {epr}"))
     }
 
     fn remove_request(&mut self, now: u64, request_id: u64) -> Vec<Sample> {
@@ -199,21 +199,20 @@ impl Client {
     fn handle_local_complete(&mut self, now: u64, epr: EprFiveTuple) -> (Vec<Event>, Vec<Sample>) {
         let mut events = vec![];
 
-        let this_node_id = self.this_node_id.clone();
-        let this_port = self.this_port.clone();
+        let this_node_id = self.this_node_id;
+        let this_port = self.this_port;
 
         let request = self.get_request(&epr);
 
         assert!(
             !request.local_operations_done,
-            "duplicate execution of local operations for request {}",
-            epr
+            "duplicate execution of local operations for request {epr}"
         );
         request.local_operations_done = true;
 
         // Compute the fidelity on the local end of this EPR.
         let memory_cell_id = std::mem::take(&mut request.memory_cell)
-            .unwrap_or_else(|| panic!("local operation completed on a failed request {}", epr));
+            .unwrap_or_else(|| panic!("local operation completed on a failed request {epr}"));
         events.push(Event::new(
             0.0,
             EventType::NetworkEvent(NetworkEventData::EprConsume(EprConsumeData {
@@ -236,8 +235,7 @@ impl Client {
 
         assert!(
             !request.remote_operations_done,
-            "duplicate execution of remote operations for request {}",
-            epr
+            "duplicate execution of remote operations for request {epr}"
         );
         request.remote_operations_done = true;
 

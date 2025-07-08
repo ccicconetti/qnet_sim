@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: © 2025 Claudio Cicconetti <c.cicconetti@iit.cnr.it>
 // SPDX-License-Identifier: MIT
 
-use std::u32;
-
 // EPR pair.
 #[derive(Debug)]
 pub struct EprPair {
@@ -21,8 +19,8 @@ impl EprPair {
     /// Return None if `node_id` does not match any of the nodes' indices,
     /// otherwise return true if the EPR pair is fully consumed.
     pub fn consume(&mut self, node_id: u32) -> Option<(u64, f64, bool)> {
-        let alice_id = self.alice_id.clone().unwrap_or(u32::MAX);
-        let bob_id = self.bob_id.clone().unwrap_or(u32::MAX);
+        let alice_id = self.alice_id.unwrap_or(u32::MAX);
+        let bob_id = self.bob_id.unwrap_or(u32::MAX);
 
         if node_id != alice_id && node_id != bob_id {
             return None;
@@ -64,8 +62,7 @@ impl EprRegister {
         );
         assert!(
             res.is_none(),
-            "The EPR pair register contains already ID {}",
-            epr_pair_id
+            "The EPR pair register contains already ID {epr_pair_id}"
         );
 
         self.last_epr_pair_id += 1;
