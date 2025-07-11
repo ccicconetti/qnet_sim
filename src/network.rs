@@ -190,7 +190,7 @@ impl Network {
                 ) {
                     samples.push(Sample::Series(
                         "gen_fidelity".to_string(),
-                        data.tx_node_id.to_string(),
+                        vec![data.tx_node_id.to_string()],
                         fidelity,
                     ));
 
@@ -299,8 +299,11 @@ impl Network {
         (
             vec![],
             vec![Sample::Series(
-                "fidelity-node,fidelity-port".to_string(),
-                format!("{},{}", data.req_app_node_id, data.req_app_port),
+                "fidelity".to_string(),
+                vec![
+                    data.req_app_node_id.to_string(),
+                    data.req_app_port.to_string(),
+                ],
                 fidelity,
             )],
         )

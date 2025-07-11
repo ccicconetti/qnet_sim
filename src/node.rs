@@ -159,7 +159,7 @@ impl Node {
 
         samples.push(Sample::Series(
             "occupancy".to_string(),
-            format!("{}-{}", self.node_id, peer_node_id),
+            vec![self.node_id.to_string(), peer_node_id.to_string()],
             occupancy,
         ));
 
@@ -444,8 +444,11 @@ impl Node {
                     return (
                         events,
                         vec![Sample::Series(
-                            "epr-request-latency-node,epr-request-latency-length".to_string(),
-                            format!("{},{}", self.node_id, request.path.len()),
+                            "epr-request-latency".to_string(),
+                            vec![
+                                self.node_id.to_string(),
+                                (request.path.len() - 1).to_string(),
+                            ],
                             crate::utils::to_seconds(now - request.received),
                         )],
                     );

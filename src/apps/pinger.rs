@@ -117,8 +117,8 @@ impl Pinger {
         (
             events,
             vec![Sample::Series(
-                "pinger-this-node,pinger-peer-node".to_string(),
-                format!("{},{}", self.this_node_id, self.peer_node_id),
+                "ping-latency".to_string(),
+                vec![self.this_node_id.to_string(), self.peer_node_id.to_string()],
                 crate::utils::to_seconds(now - self.created),
             )],
         )

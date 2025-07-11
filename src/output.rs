@@ -9,7 +9,7 @@ use crate::utils::CsvFriend;
 pub enum Sample {
     SingleOneTime(String, f64),
     SingleTimeAvg(String, f64),
-    Series(String, String, f64),
+    Series(String, Vec<String>, f64),
 }
 
 struct TimeAvg {
@@ -114,15 +114,20 @@ impl CsvFriend for OutputSingle {
 }
 
 pub struct OutputSeriesSingle {
-    pub header: String,
-    pub values: std::collections::HashMap<String, Vec<(f64, f64)>>,
+    /// CSV headers, which explains the meaning of the labels.
+    pub headers: Vec<String>,
+    /// Time series. Each sample is associated with:
+    /// - a vector of string labels
+    /// - the time when the sample was collected
+    /// - the value of the sample
+    pub values: Vec<(Vec<String>, f64, f64)>,
 }
 
 impl Default for OutputSeriesSingle {
     fn default() -> Self {
         Self {
-            header: "label".to_string(),
-            values: std::collections::HashMap::new(),
+            headers: vec![],
+            values: vec![],
         }
     }
 }
@@ -147,20 +152,30 @@ impl OutputSeries {
     }
 
     /// Add a new value to a series metric.
+    ///
     /// Parameters:
     /// - `name`: the metric name.
-    /// - `label`: a label associated with the value.
+    /// - `labels`: the labels associated with the value.
     /// - `time`: timestamp of the value.
     /// - `value`: the value added, if collection is enabled.
-    pub fn add(&mut self, name: &str, label: &str, time: f64, value: f64) {
+    ///
+    /// The function panics if the headers have not been set or if number of
+    /// labels is different from the number of elements expected based on the
+    /// headers.
+    pub fn add(&mut self, name: &str, labels: Vec<String>, time: f64, value: f64) {
         if self.enabled && !self.ignore.contains(name) {
-            self.series
-                .entry(name.to_string())
-                .or_default()
-                .values
-                .entry(label.to_string())
-                .or_default()
-                .push((time, value));
+            let series_single = self
+                .series
+                .get_mut(name)
+                .unwrap_or_else(|| panic!("uninitialized metric {}", name));
+            assert!(
+                series_single.headers.len() == labels.len(),
+                "wrong numbers of labels for metric {}: expected {}, found {}",
+                name,
+                series_single.headers.len(),
+                labels.len()
+            );
+            series_single.values.push((labels, time, value));
         }
     }
 
@@ -169,12 +184,16 @@ impl OutputSeries {
         self.enabled = true;
     }
 
-    /// Set the header for a given metric.
+    /// Set the headers for a given metric and reset any previous values.
     /// Parameters:
     /// - `name`: the name of the metric.
-    /// - `header`: the header to be used for serializing values.
-    pub fn set_header(&mut self, name: &str, header: &str) {
-        self.series.entry(name.to_string()).or_default().header = header.to_string();
+    /// - `headers`: the header to be used for serializing values.
+    pub fn set_headers(&mut self, name: &str, headers: &[&str]) {
+        if !self.ignore.contains(name) {
+            let series_single = self.series.entry(name.to_string()).or_default();
+            series_single.headers = headers.iter().map(|x| x.to_string()).collect();
+            series_single.values.clear();
+        }
     }
 }
 
@@ -216,24 +235,31 @@ pub fn save_outputs(
         )?;
 
         for (name, elem) in &output.series.series {
+            if elem.values.is_empty() {
+                continue;
+            }
             let mut series_file = crate::utils::open_output_file(
                 output_path,
                 format!("{name}.csv").as_str(),
                 append,
                 format!(
                     "{}{},{},time,value",
-                    additional_header, &config_csv_header, elem.header
+                    additional_header,
+                    &config_csv_header,
+                    elem.headers.join(",")
                 )
                 .as_str(),
             )?;
-            for (label, values) in &elem.values {
-                for (time, value) in values {
-                    writeln!(
-                        &mut series_file,
-                        "{}{},{},{},{}",
-                        additional_fields, output.config_csv, label, time, value
-                    )?;
-                }
+            for (labels, time, value) in &elem.values {
+                writeln!(
+                    &mut series_file,
+                    "{}{},{},{},{}",
+                    additional_fields,
+                    output.config_csv,
+                    labels.join(","),
+                    time,
+                    value
+                )?;
             }
         }
     }
@@ -269,6 +295,58 @@ mod tests {
                 metric.sum_time,
                 warmup
             );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_output_series() -> anyhow::Result<()> {
+        let mut output_series = OutputSeries::new(std::collections::HashSet::from([
+            "to-be-ignored".to_string(),
+        ]));
+
+        output_series.set_headers("my-metric-0", &[]);
+        output_series.set_headers("my-metric-1", &["x"]);
+        output_series.set_headers("my-metric-2", &["x", "y"]);
+
+        assert!(!output_series.enabled);
+
+        output_series.add("my-metric-0", vec![], 1.0, 1.1);
+        output_series.add("my-metric-1", vec!["a".to_string()], 2.0, 2.1);
+        output_series.add(
+            "my-metric-2",
+            vec!["a".to_string(), "b".to_string()],
+            3.0,
+            3.1,
+        );
+
+        for single in output_series.series.values() {
+            assert_eq!(0, single.values.len());
+        }
+
+        output_series.enable();
+
+        output_series.add("to-be-ignored", vec![], 1.0, 1.1);
+        assert!(output_series
+            .series
+            .keys()
+            .find(|x| *x == "to-be-ignored")
+            .is_none());
+
+        for _ in 0..10 {
+            output_series.add("my-metric-0", vec![], 1.0, 1.1);
+            output_series.add("my-metric-1", vec!["a".to_string()], 2.0, 2.1);
+            output_series.add(
+                "my-metric-2",
+                vec!["a".to_string(), "b".to_string()],
+                3.0,
+                3.1,
+            );
+        }
+
+        for single in output_series.series.values() {
+            assert_eq!(10, single.values.len());
         }
 
         Ok(())

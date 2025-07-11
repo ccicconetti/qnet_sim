@@ -104,7 +104,16 @@ impl Simulation {
         // Save to Graphviz files and terminate immediately.
         anyhow::ensure!(!save_to_dot, "saved to Dot files");
 
-        let series = crate::output::OutputSeries::new(config.user_config.series_ignore.clone());
+        // Create data structure for time series, also setting the headers
+        let mut series = crate::output::OutputSeries::new(config.user_config.series_ignore.clone());
+        series.set_headers("gen_fidelity", &["node_id"]);
+        series.set_headers("fidelity", &["node_id", "port"]);
+        series.set_headers("occupancy", &["node_id", "peer_node_id"]);
+        series.set_headers("epr-request-latency", &["node_id", "path_length"]);
+        series.set_headers("client-latency", &["node_id", "port"]);
+        series.set_headers("client-queue-len", &["node_id", "port"]);
+        series.set_headers("ping-latency", &["node_id", "peer_node_id"]);
+        series.set_headers("server-queue-len", &["node_id", "port"]);
 
         Ok(Self {
             network,
@@ -125,9 +134,9 @@ impl Simulation {
             match sample {
                 Sample::SingleOneTime(name, value) => self.single.one_time(&name, value),
                 Sample::SingleTimeAvg(name, value) => self.single.time_avg(&name, now, value),
-                Sample::Series(name, label, value) => {
+                Sample::Series(name, labels, value) => {
                     self.series
-                        .add(&name, &label, crate::utils::to_seconds(now), value)
+                        .add(&name, labels, crate::utils::to_seconds(now), value)
                 }
             }
         }

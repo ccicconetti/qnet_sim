@@ -57,8 +57,8 @@ impl Server {
 
     fn pending_len_trace(&self) -> Sample {
         Sample::Series(
-            "server_pending_len".to_string(),
-            format!("{}:{}", self.this_node_id, self.this_port),
+            "server-queue-len".to_string(),
+            vec![self.this_node_id.to_string(), self.this_port.to_string()],
             self.pending.len() as f64,
         )
     }
