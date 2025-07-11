@@ -372,7 +372,7 @@ mod tests {
                     memory_cell: Some(MemoryCellId {
                         neighbor_node_id: 2,
                         role: nic::Role::Master,
-                        index: 0,
+                        local_pair_id: 0,
                     }),
                     is_source: true,
                 })),

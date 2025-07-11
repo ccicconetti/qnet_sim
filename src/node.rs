@@ -172,9 +172,9 @@ impl Node {
         &mut self,
         peer_node_id: u32,
         role: &super::nic::Role,
-        index: usize,
+        local_pair_id: u64,
     ) -> Option<crate::nic::MemoryCellData> {
-        self.get_nic(peer_node_id, role).consume(index)
+        self.get_nic(peer_node_id, role).consume(local_pair_id)
     }
 
     /// Return the right set of NICs depending on the role.
@@ -298,13 +298,10 @@ impl Node {
                 .get_mut(&data.prev_hop)
                 .expect("received an EsRequest from an unknown peer");
 
-            if nic.check_valid(data.memory_cell, data.local_pair_id) {
-                // The memory cell is as expected from the master, the procedure
-                // can go on:
-                // 1. Lock the memory cell, so that it cannot be modified.
-                // 2. Schedule an event for when the local operations are done.
-
-                nic.used(data.memory_cell);
+            if nic.used(data.local_pair_id) {
+                // We just locked the memory cell so that it cannot be modified.
+                // We now schedule an event for when the local operations need
+                // to be done.
 
                 // If this is a single hop EPR request, then the EPR pair can
                 // be used immediately. Otherwise, X/Z corrections might be
@@ -331,6 +328,8 @@ impl Node {
                     EventType::NodeEvent(NodeEventData::EsLocalComplete(data)),
                 ));
             } else {
+                nic.print_all_cells(); // XXX
+
                 // The memory cell does not contain what the master expects.
                 let dst_node_id = data.prev_hop;
                 events.push(Event::new_transfer(
@@ -379,7 +378,7 @@ impl Node {
             let memory_cell = Some(MemoryCellId {
                 neighbor_node_id: data.prev_hop,
                 role: super::nic::Role::Slave,
-                index: data.memory_cell,
+                local_pair_id: data.local_pair_id,
             });
             events.push(Event::new(
                 0.0_f64,
@@ -497,18 +496,14 @@ impl Node {
             if let Some(requests) = &mut self.pending_requests.get_mut(&peer) {
                 for request in requests.iter_mut() {
                     if let Status::Queued = request.status {
-                        if let Some(index) = nic.newest_valid() {
-                            let local_pair_id = nic
-                                .used(index)
-                                .expect("cannot use a memory cell that is assumed to be valid")
-                                .identifier;
+                        if let Some(local_pair_id) = nic.newest_valid() {
+                            nic.used(local_pair_id);
                             events.push(Event::new_transfer(
                                 EventType::NodeEvent(NodeEventData::EsRequest(EsRequestData {
                                     epr: request.epr.clone(),
                                     prev_hop: self.node_id,
                                     next_hop: peer,
                                     path: request.path.clone(),
-                                    memory_cell: index,
                                     local_pair_id,
                                 })),
                                 self.node_id,
@@ -517,7 +512,7 @@ impl Node {
                             request.status = Status::WaitingForResponse(MemoryCellId {
                                 neighbor_node_id: peer,
                                 role: crate::nic::Role::Master,
-                                index,
+                                local_pair_id,
                             });
                         } else {
                             break;

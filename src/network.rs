@@ -269,7 +269,7 @@ impl Network {
         let fidelity = if let Some(cell) = self.nodes[data.consume_node_id as usize].consume(
             data.memory_cell_id.neighbor_node_id,
             &data.memory_cell_id.role,
-            data.memory_cell_id.index,
+            data.memory_cell_id.local_pair_id,
         ) {
             if let Some(weight) = self
                 .physical_topology
@@ -278,7 +278,7 @@ impl Network {
             {
                 if let Some((updated, fidelity)) = self
                     .epr_register
-                    .consume(cell.identifier, data.consume_node_id)
+                    .consume(cell.local_pair_id, data.consume_node_id)
                 {
                     assert!(now >= updated);
                     crate::utils::fidelity(

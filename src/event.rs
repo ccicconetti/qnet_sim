@@ -21,12 +21,12 @@ pub struct EprNotifiedData {
 /// Quantum memory cell identifier.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct MemoryCellId {
-    /// Neighbor node ID, used to identify the NIC, and memory cell index.
+    /// Neighbor node ID.
     pub neighbor_node_id: u32,
     /// Role in this logical link.
     pub role: crate::nic::Role,
-    /// Memory cell index.
-    pub index: usize,
+    /// Local pair ID.
+    pub local_pair_id: u64,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -118,10 +118,6 @@ pub struct EsRequestData {
     /// one is always the node hosting the application's peer.
     /// The vector never has less than two elements.
     pub path: Vec<u32>,
-    /// Index of the memory cell identified for entanglement swapping by the
-    /// node that sent the request, for which it has master role (the node
-    /// receiving the request has slave role).
-    pub memory_cell: usize,
     /// Local pair identifier.
     pub local_pair_id: u64,
 }
@@ -178,8 +174,7 @@ pub struct EprResponseData {
     /// The boolean is true if the EPR response is associated with the source
     /// node; it is false if it is associated with the target, instead.
     pub is_source: bool,
-    /// Neighbor node ID, used to identify the NIC, and memory cell index.
-    /// If None then the request failed.
+    /// Memory cell ID. If None then the request failed.
     pub memory_cell: Option<MemoryCellId>,
 }
 

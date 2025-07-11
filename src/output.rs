@@ -113,6 +113,7 @@ impl CsvFriend for OutputSingle {
     }
 }
 
+#[derive(Default)]
 pub struct OutputSeriesSingle {
     /// CSV headers, which explains the meaning of the labels.
     pub headers: Vec<String>,
@@ -121,15 +122,6 @@ pub struct OutputSeriesSingle {
     /// - the time when the sample was collected
     /// - the value of the sample
     pub values: Vec<(Vec<String>, f64, f64)>,
-}
-
-impl Default for OutputSeriesSingle {
-    fn default() -> Self {
-        Self {
-            headers: vec![],
-            values: vec![],
-        }
-    }
 }
 
 /// Series of values.
@@ -167,7 +159,7 @@ impl OutputSeries {
             let series_single = self
                 .series
                 .get_mut(name)
-                .unwrap_or_else(|| panic!("uninitialized metric {}", name));
+                .unwrap_or_else(|| panic!("uninitialized metric {name}"));
             assert!(
                 series_single.headers.len() == labels.len(),
                 "wrong numbers of labels for metric {}: expected {}, found {}",
