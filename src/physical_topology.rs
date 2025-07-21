@@ -224,8 +224,8 @@ pub struct GridParams {
 impl Default for GridParams {
     fn default() -> Self {
         Self {
-            orbit_to_orbit_distance: 3000.0,
-            ground_to_orbit_distance: 1000.0,
+            orbit_to_orbit_distance: 3000000.0,
+            ground_to_orbit_distance: 1000000.0,
             num_orbits: 3,
             orbit_length: 4,
         }
@@ -280,8 +280,8 @@ pub struct ChainParams {
 impl Default for ChainParams {
     fn default() -> Self {
         Self {
-            orbit_to_orbit_distance: 3000.0,
-            ground_to_orbit_distance: 1000.0,
+            orbit_to_orbit_distance: 3000000.0,
+            ground_to_orbit_distance: 1000000.0,
             num_repeaters: 1,
         }
     }

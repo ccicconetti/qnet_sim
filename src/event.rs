@@ -276,9 +276,9 @@ pub struct Event {
 
 impl Event {
     /// Create a new event to be executed at the specified relative time, in s.
-    pub fn new(time: f64, event_type: EventType) -> Self {
+    pub fn new(time_relative: f64, event_type: EventType) -> Self {
         Self {
-            time: crate::utils::to_nanoseconds(time),
+            time: crate::utils::to_nanoseconds(time_relative),
             event_type,
             transfer: None,
         }
@@ -299,9 +299,14 @@ impl Event {
         self.time
     }
 
-    // Advance the event time by the specified period, in ns.
+    /// Advance the event time by the specified period, in ns.
     pub fn advance(&mut self, advance_time: u64) {
         self.time += advance_time
+    }
+
+    /// Reset the event time, in s.
+    pub fn reset(&mut self, time_relative: f64) {
+        self.time = crate::utils::to_nanoseconds(time_relative);
     }
 
     /// Return the node that should handle the event.

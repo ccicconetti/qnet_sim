@@ -490,10 +490,13 @@ impl Node {
 
     /// Schedule requests pending for a given peer, if possible.
     fn schedule_pending_requests(&mut self, peer: u32) -> (Vec<Event>, Vec<Sample>) {
-        log::debug!("{}", self);
+        let log_status = format!("{self}");
         let mut events = vec![];
         if let Some(nic) = self.nics_master.get_mut(&peer) {
             if let Some(requests) = &mut self.pending_requests.get_mut(&peer) {
+                if !requests.is_empty() {
+                    log::debug!("{log_status}");
+                }
                 for request in requests.iter_mut() {
                     if let Status::Queued = request.status {
                         if let Some(local_pair_id) = nic.newest_valid() {

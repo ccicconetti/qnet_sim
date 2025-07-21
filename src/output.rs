@@ -203,26 +203,38 @@ pub fn save_outputs(
     config_csv_header: &str,
     additional_header: &str,
     additional_fields: &str,
+    save_config: bool,
 ) -> anyhow::Result<()> {
+    let header_comma = if additional_header.is_empty() {
+        ""
+    } else {
+        ","
+    };
     let mut single_file = crate::utils::open_output_file(
         output_path,
         "single.csv",
         append,
         format!(
-            "{}{},{}",
+            "{}{}{}{}{}",
             additional_header,
-            config_csv_header,
+            header_comma,
+            if save_config { config_csv_header } else { "" },
+            if save_config { "," } else { "" },
             outputs.first().unwrap().single.header()
         )
         .as_str(),
     )?;
 
     for output in outputs {
+        let config_csv = if save_config { &output.config_csv } else { "" };
+        let config_comma = if save_config { "," } else { "" };
         writeln!(
             &mut single_file,
-            "{}{},{}",
+            "{}{}{}{}{}",
             additional_fields,
-            output.config_csv,
+            header_comma,
+            config_csv,
+            config_comma,
             output.single.to_csv()
         )?;
 
@@ -235,9 +247,11 @@ pub fn save_outputs(
                 format!("{name}.csv").as_str(),
                 append,
                 format!(
-                    "{}{},{},time,value",
+                    "{}{}{}{}{},time,value",
                     additional_header,
-                    &config_csv_header,
+                    header_comma,
+                    if save_config { &config_csv_header } else { "" },
+                    config_comma,
                     elem.headers.join(",")
                 )
                 .as_str(),
@@ -245,9 +259,11 @@ pub fn save_outputs(
             for (labels, time, value) in &elem.values {
                 writeln!(
                     &mut series_file,
-                    "{}{},{},{},{}",
+                    "{}{}{}{}{},{},{}",
                     additional_fields,
-                    output.config_csv,
+                    header_comma,
+                    config_csv,
+                    config_comma,
                     labels.join(","),
                     time,
                     value

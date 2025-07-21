@@ -128,6 +128,7 @@ impl Network {
 
     fn handle_node_event(&mut self, event: Event) -> (Vec<Event>, Vec<Sample>) {
         let mut event = event;
+        let now = event.time();
         if let Some(transfer) = &mut event.transfer {
             if !transfer.done {
                 // Re-schedule the same event after adding a latency that takes
@@ -140,7 +141,15 @@ impl Network {
                     .expect("cannot compute distance between two nodes");
 
                 let latency = crate::utils::distance_to_latency(distance);
-                event.advance(crate::utils::to_nanoseconds(latency));
+                log::info!(
+                    "XXX {} -> {}, dist {}, lat {} ms, exp {} ns",
+                    transfer.src_node_id,
+                    transfer.dst_node_id,
+                    distance,
+                    latency * 1e3,
+                    now + crate::utils::to_nanoseconds(latency)
+                );
+                event.reset(latency);
                 return (vec![event], vec![]);
             }
         }

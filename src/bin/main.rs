@@ -40,6 +40,9 @@ struct Args {
     /// Header of additional fields recorded in the CSV output file.
     #[arg(long, default_value_t = String::from(""))]
     additional_header: String,
+    /// Add the configuration values to the CSV output file.
+    #[arg(long)]
+    save_config: bool,
 }
 
 #[tokio::main]
@@ -147,6 +150,7 @@ async fn main() -> anyhow::Result<()> {
             &config_csv_header,
             &args.additional_header,
             &args.additional_fields,
+            args.save_config,
         )?;
     }
 
