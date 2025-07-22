@@ -17,7 +17,7 @@ pub struct Pinger {
     peer_node_id: u32,
     /// Target port.
     peer_port: u16,
-    /// Maximum number of requests.
+    /// Maximum number of requests. 0 means infinite.
     max_requests: u64,
     /// ID of the next request.
     next_request_id: u64,
@@ -107,7 +107,7 @@ impl Pinger {
         ));
 
         // Terminate if the maximum number of requests was exceeded.
-        if self.next_request_id < self.max_requests {
+        if self.max_requests == 0 || self.next_request_id < self.max_requests {
             events.push(Event::new(
                 0.0,
                 EventType::AppEvent(AppEventData::EprRequest(self.this_node_id, self.this_port)),
