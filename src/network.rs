@@ -141,14 +141,6 @@ impl Network {
                     .expect("cannot compute distance between two nodes");
 
                 let latency = crate::utils::distance_to_latency(distance);
-                log::info!(
-                    "XXX {} -> {}, dist {}, lat {} ms, exp {} ns",
-                    transfer.src_node_id,
-                    transfer.dst_node_id,
-                    distance,
-                    latency * 1e3,
-                    now + crate::utils::to_nanoseconds(latency)
-                );
                 event.reset(latency);
                 return (vec![event], vec![]);
             }

@@ -328,7 +328,9 @@ impl Node {
                     EventType::NodeEvent(NodeEventData::EsLocalComplete(data)),
                 ));
             } else {
-                nic.print_all_cells(); // XXX
+                if log::log_enabled!(log::Level::Debug) {
+                    nic.print_all_cells();
+                }
 
                 // The memory cell does not contain what the master expects.
                 let dst_node_id = data.prev_hop;
