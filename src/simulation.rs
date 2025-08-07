@@ -12,7 +12,7 @@ pub struct Simulation {
     // internal data structures
     network: crate::network::Network,
     events: crate::event_queue::EventQueue,
-    single: crate::output::OutputSingle,
+    single: crate::output::OutputScalar,
     series: crate::output::OutputSeries,
 
     // configuration
@@ -105,10 +105,10 @@ impl Simulation {
         anyhow::ensure!(!save_to_dot, "saved to Dot files");
 
         // Create data structure for scalar values.
-        let mut single = crate::output::OutputSingle::default();
-        single.init("bsm_prob", crate::output::SingleMetricType::Avg);
-        single.init("event_queue_len", crate::output::SingleMetricType::TimeAvg);
-        single.init("slave_fails", crate::output::SingleMetricType::Count);
+        let mut single = crate::output::OutputScalar::default();
+        single.init("bsm_prob", crate::output::ScalarMetricType::Avg);
+        single.init("event_queue_len", crate::output::ScalarMetricType::TimeAvg);
+        single.init("slave_fails", crate::output::ScalarMetricType::Count);
 
         // Create data structure for time series, also setting the headers
         let mut series = crate::output::OutputSeries::new(config.user_config.series_ignore.clone());
@@ -138,10 +138,10 @@ impl Simulation {
         let now = self.events.last_time();
         for sample in samples {
             match sample {
-                Sample::SingleOneTime(name, value) => self.single.one_time(&name, value),
-                Sample::SingleAvg(name, value) => self.single.avg(&name, value),
-                Sample::SingleTimeAvg(name, value) => self.single.time_avg(&name, now, value),
-                Sample::SingleCount(name) => self.single.count(&name),
+                Sample::ScalarOneTime(name, value) => self.single.one_time(&name, value),
+                Sample::ScalarAvg(name, value) => self.single.avg(&name, value),
+                Sample::ScalarTimeAvg(name, value) => self.single.time_avg(&name, now, value),
+                Sample::ScalarCount(name) => self.single.count(&name),
                 Sample::Series(name, labels, value) => {
                     self.series
                         .add(&name, labels, crate::utils::to_seconds(now), value)
@@ -266,7 +266,7 @@ impl Simulation {
         let single = std::mem::take(&mut self.single);
         let series = std::mem::take(&mut self.series);
         crate::output::Output {
-            single,
+            scalar: single,
             series,
             config_csv: self.config.to_csv(),
         }

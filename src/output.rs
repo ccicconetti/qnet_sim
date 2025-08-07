@@ -7,10 +7,10 @@ use crate::utils::CsvFriend;
 
 #[derive(Debug)]
 pub enum Sample {
-    SingleOneTime(String, f64),
-    SingleAvg(String, f64),
-    SingleTimeAvg(String, f64),
-    SingleCount(String),
+    ScalarOneTime(String, f64),
+    ScalarAvg(String, f64),
+    ScalarTimeAvg(String, f64),
+    ScalarCount(String),
     Series(String, Vec<String>, f64),
 }
 
@@ -87,7 +87,7 @@ impl TimeAvg {
 }
 
 #[derive(Default)]
-pub struct OutputSingle {
+pub struct OutputScalar {
     enabled: bool,
     warmup: u64,
     one_time: std::collections::BTreeMap<String, f64>,
@@ -96,28 +96,28 @@ pub struct OutputSingle {
     count: std::collections::BTreeMap<String, Count>,
 }
 
-pub enum SingleMetricType {
+pub enum ScalarMetricType {
     Avg,
     TimeAvg,
     Count,
 }
 
-impl OutputSingle {
+impl OutputScalar {
     pub fn one_time(&mut self, name: &str, value: f64) {
         if self.enabled {
             self.one_time.insert(name.to_string(), value);
         }
     }
 
-    pub fn init(&mut self, name: &str, metric_type: SingleMetricType) {
+    pub fn init(&mut self, name: &str, metric_type: ScalarMetricType) {
         match metric_type {
-            SingleMetricType::Avg => {
+            ScalarMetricType::Avg => {
                 self.avg.insert(name.to_string(), Avg::default());
             }
-            SingleMetricType::TimeAvg => {
+            ScalarMetricType::TimeAvg => {
                 self.time_avg.insert(name.to_string(), TimeAvg::default());
             }
-            SingleMetricType::Count => {
+            ScalarMetricType::Count => {
                 self.count.insert(name.to_string(), Count::default());
             }
         };
@@ -170,7 +170,7 @@ impl OutputSingle {
     }
 }
 
-impl CsvFriend for OutputSingle {
+impl CsvFriend for OutputScalar {
     fn header(&self) -> String {
         format!(
             "{},{},{},{}",
@@ -296,7 +296,7 @@ impl OutputSeries {
 }
 
 pub struct Output {
-    pub single: OutputSingle,
+    pub scalar: OutputScalar,
     pub series: OutputSeries,
     pub config_csv: String,
 }
@@ -318,9 +318,9 @@ pub fn save_outputs(
     };
 
     // Open all the files.
-    let mut single_file = crate::utils::open_output_file(
+    let mut scalar_file = crate::utils::open_output_file(
         output_path,
-        "single.csv",
+        "scalar.csv",
         append,
         format!(
             "{}{}{}{}{}",
@@ -328,7 +328,7 @@ pub fn save_outputs(
             header_comma,
             if save_config { config_csv_header } else { "" },
             if save_config { "," } else { "" },
-            outputs.first().unwrap().single.header()
+            outputs.first().unwrap().scalar.header()
         )
         .as_str(),
     )?;
@@ -361,13 +361,13 @@ pub fn save_outputs(
         let config_csv = if save_config { &output.config_csv } else { "" };
         let config_comma = if save_config { "," } else { "" };
         writeln!(
-            &mut single_file,
+            &mut scalar_file,
             "{}{}{}{}{}",
             additional_fields,
             header_comma,
             config_csv,
             config_comma,
-            output.single.to_csv()
+            output.scalar.to_csv()
         )?;
 
         for (name, elem) in &output.series.series {
@@ -401,15 +401,16 @@ mod tests {
         let warmups = [0, 5];
         let expected_values = [1.9, 2.0];
         for (warmup, expected_value) in warmups.iter().zip(expected_values.iter()) {
-            let mut single = OutputSingle::default();
-            single.enable(*warmup);
-            single.time_avg("metric", 20, 1.0);
-            single.time_avg("metric", 30, 2.0);
-            single.time_avg("metric", 40, 1.0);
-            single.time_avg("metric", 50, 3.0);
-            single.finish(100);
+            let mut scalar = OutputScalar::default();
+            scalar.init("metric", ScalarMetricType::TimeAvg);
+            scalar.enable(*warmup);
+            scalar.time_avg("metric", 20, 1.0);
+            scalar.time_avg("metric", 30, 2.0);
+            scalar.time_avg("metric", 40, 1.0);
+            scalar.time_avg("metric", 50, 3.0);
+            scalar.finish(100);
 
-            let metric = single.time_avg.get("metric").unwrap();
+            let metric = scalar.time_avg.get("metric").unwrap();
 
             assert!(
                 metric.avg() == *expected_value,

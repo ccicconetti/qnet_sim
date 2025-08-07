@@ -341,7 +341,7 @@ impl Node {
                 dst_node_id,
             ));
 
-            samples.push(Sample::SingleCount("slave_fails".to_string()))
+            samples.push(Sample::ScalarCount("slave_fails".to_string()))
         }
 
         (events, samples)
@@ -351,9 +351,9 @@ impl Node {
     ///
     /// If the operation was a BSM, decide (randomly) if successful:
     /// - Success: send `EsSuccess` to the previous hop and send a new
-    /// `EsRequest` to the next hop.
+    ///   `EsRequest` to the next hop.
     /// - Failure: send `EsFailure` to the previous hop and free the local EPR
-    /// pair (slave).
+    ///   pair (slave).
     ///
     /// If the operation was a correction:
     /// - Send `EsRemoteComplete` to source node.
@@ -401,7 +401,7 @@ impl Node {
                     self.node_id,
                     dst_node_id,
                 ));
-                samples.push(Sample::SingleAvg("bsm_prob".to_string(), 1.0));
+                samples.push(Sample::ScalarAvg("bsm_prob".to_string(), 1.0));
             } else {
                 // Failed Bell-state measurement.
                 let dst_node_id = data.prev_hop;
@@ -410,7 +410,7 @@ impl Node {
                     self.node_id,
                     dst_node_id,
                 ));
-                samples.push(Sample::SingleAvg("bsm_prob".to_string(), 0.0));
+                samples.push(Sample::ScalarAvg("bsm_prob".to_string(), 0.0));
             }
         }
 
