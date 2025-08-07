@@ -224,7 +224,7 @@ impl Node {
     /// - `epr`: the EPR to be established
     fn handle_epr_request_app(
         &mut self,
-        now: u64,
+        _now: u64,
         received: u64,
         epr: EprFiveTuple,
     ) -> (Vec<Event>, Vec<Sample>) {
@@ -242,15 +242,6 @@ impl Node {
         assert_eq!(epr.source_node_id, *path.first().unwrap());
         assert_eq!(epr.target_node_id, *path.last().unwrap());
 
-        if path.len() > 2 {
-            todo!(
-                "{} {} path {:?}: multi-hop not yet implemented",
-                now,
-                epr,
-                path
-            );
-        }
-
         let peer = *path.last().unwrap();
         self.pending_requests
             .entry(peer)
@@ -266,7 +257,10 @@ impl Node {
     }
 
     /// Handle ES request from another node.
-    fn handle_es_request(&mut self, now: u64, data: EsRequestData) -> (Vec<Event>, Vec<Sample>) {
+    ///
+    /// If the memory cell does not contain what the master expects, then
+    /// send an EsFailure to the previous hop to free resources.
+    fn handle_es_request(&mut self, _now: u64, data: EsRequestData) -> (Vec<Event>, Vec<Sample>) {
         assert_eq!(self.node_id, data.next_hop);
 
         #[cfg(debug_assertions)]
@@ -275,7 +269,7 @@ impl Node {
                 .path
                 .iter()
                 .position(|x| *x == self.node_id)
-                .expect("this node not present in the path of an EsRequest")
+                .expect("this node is not present in the path of an EsRequest")
                 as u32;
             assert!(
                 prev_hop_pos > 0,
@@ -287,27 +281,29 @@ impl Node {
             assert_eq!(data.path[prev_hop_pos as usize], data.prev_hop);
         }
 
-        if data.epr.target_node_id == self.node_id {
-            // This is the final target node.
-            let mut events = vec![];
+        let mut events = vec![];
+        let mut samples = vec![];
 
-            // Check if there is a valid and unused EPR pair in the memory cell
-            // indicated in the request.
-            let nic = self
-                .nics_slave
-                .get_mut(&data.prev_hop)
-                .expect("received an EsRequest from an unknown peer");
+        // Check if there is a valid and unused EPR pair in the memory cell
+        // indicated in the request.
+        let nic = self
+            .nics_slave
+            .get_mut(&data.prev_hop)
+            .expect("received an EsRequest from an unknown peer");
 
-            if nic.used(data.local_pair_id) {
-                // We just locked the memory cell so that it cannot be modified.
-                // We now schedule an event for when the local operations need
-                // to be done.
+        if nic.used(data.local_pair_id) {
+            // We just locked the memory cell so that it cannot be modified.
+            // We now schedule an event for when the local operations (Bell-state
+            // measurement or X/Z corrections) need to be done.
 
+            let event_delay = if data.epr.target_node_id == self.node_id {
+                // This is the final target node.
+                //
                 // If this is a single hop EPR request, then the EPR pair can
                 // be used immediately. Otherwise, X/Z corrections might be
                 // necessary dependin on the outcome of the BSM operations
                 // along the path.
-                let event_delay = if data.path.len() > 2 {
+                if data.path.len() > 2 {
                     let rand = self.rng.gen_range(0..4);
                     if rand == 0 {
                         // no corrections
@@ -321,52 +317,57 @@ impl Node {
                     }
                 } else {
                     0.0
-                };
-
-                events.push(Event::new(
-                    event_delay,
-                    EventType::NodeEvent(NodeEventData::EsLocalComplete(data)),
-                ));
-            } else {
-                if log::log_enabled!(log::Level::Debug) {
-                    nic.print_all_cells();
                 }
+            } else {
+                // This is an intermediate node, which has to perform entanglement
+                // swapping.
+                self.properties.swapping_duration
+            };
 
-                // The memory cell does not contain what the master expects.
-                let dst_node_id = data.prev_hop;
-                events.push(Event::new_transfer(
-                    EventType::NodeEvent(NodeEventData::EsFailure(data)),
-                    self.node_id,
-                    dst_node_id,
-                ));
+            events.push(Event::new(
+                event_delay,
+                EventType::NodeEvent(NodeEventData::EsLocalComplete(data)),
+            ));
+        } else {
+            if log::log_enabled!(log::Level::Debug) {
+                nic.print_all_cells();
             }
 
-            (events, vec![])
-        } else {
-            // This is an intermediate node, which has to perform entanglement
-            // swapping.
-            todo!("{} {:?}: multi-hop not yet implemented", now, data)
+            // The memory cell does not contain what the master expects.
+            let dst_node_id = data.prev_hop;
+            events.push(Event::new_transfer(
+                EventType::NodeEvent(NodeEventData::EsFailure(data)),
+                self.node_id,
+                dst_node_id,
+            ));
+
+            samples.push(Sample::SingleCount("slave_fails".to_string()))
         }
+
+        (events, samples)
     }
 
     /// Handle completion of local operations for an ES.
     ///
     /// If the operation was a BSM, decide (randomly) if successful:
-    /// - Success: send `EsSuccess` to prev_hop.
-    /// - Failure: send `EsFailure` to prev_hop, free local EPR pair (slave).
+    /// - Success: send `EsSuccess` to the previous hop and send a new
+    /// `EsRequest` to the next hop.
+    /// - Failure: send `EsFailure` to the previous hop and free the local EPR
+    /// pair (slave).
     ///
     /// If the operation was a correction:
     /// - Send `EsRemoteComplete` to source node.
     /// - Notify `EprResponse` (is_source = false) to the local app.
     fn handle_es_local_complete(
         &mut self,
-        now: u64,
+        _now: u64,
         data: EsRequestData,
     ) -> (Vec<Event>, Vec<Sample>) {
         assert_eq!(self.node_id, data.next_hop);
         assert!(data.path.len() >= 2);
 
         let mut events = vec![];
+        let mut samples = vec![];
         if self.node_id == *data.path.last().unwrap() {
             // This node is the last element in the path, which means that the
             // local operation was an X/Z correction, which never fails.
@@ -391,11 +392,29 @@ impl Node {
                 })),
             ));
         } else {
-            // XXX
-            todo!("{} {:?}: multi-hop not yet implemented", now, data)
+            // This is an intermediate node.
+            if self.rng.gen_bool(self.properties.swapping_success_prob) {
+                // Successful Bell-state measurement.
+                let dst_node_id = data.prev_hop;
+                events.push(Event::new_transfer(
+                    EventType::NodeEvent(NodeEventData::EsSuccess(data)),
+                    self.node_id,
+                    dst_node_id,
+                ));
+                samples.push(Sample::SingleAvg("bsm_prob".to_string(), 1.0));
+            } else {
+                // Failed Bell-state measurement.
+                let dst_node_id = data.prev_hop;
+                events.push(Event::new_transfer(
+                    EventType::NodeEvent(NodeEventData::EsFailure(data)),
+                    self.node_id,
+                    dst_node_id,
+                ));
+                samples.push(Sample::SingleAvg("bsm_prob".to_string(), 0.0));
+            }
         }
 
-        (events, vec![])
+        (events, samples)
     }
 
     /// Handle response received for an ES request.
@@ -410,7 +429,7 @@ impl Node {
     /// In both cases remove the request from the pending queue
     fn handle_es_response(
         &mut self,
-        now: u64,
+        _now: u64,
         data: EsRequestData,
         success: bool,
     ) -> (Vec<Event>, Vec<Sample>) {

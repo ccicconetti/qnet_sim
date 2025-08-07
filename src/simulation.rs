@@ -104,6 +104,12 @@ impl Simulation {
         // Save to Graphviz files and terminate immediately.
         anyhow::ensure!(!save_to_dot, "saved to Dot files");
 
+        // Create data structure for scalar values.
+        let mut single = crate::output::OutputSingle::default();
+        single.init("bsm_prob", crate::output::SingleMetricType::Avg);
+        single.init("event_queue_len", crate::output::SingleMetricType::TimeAvg);
+        single.init("slave_fails", crate::output::SingleMetricType::Count);
+
         // Create data structure for time series, also setting the headers
         let mut series = crate::output::OutputSeries::new(config.user_config.series_ignore.clone());
         series.set_headers("gen_fidelity", &["node_id"]);
@@ -119,7 +125,7 @@ impl Simulation {
             network,
             config,
             events: crate::event_queue::EventQueue::default(),
-            single: crate::output::OutputSingle::default(),
+            single,
             series,
         })
     }
@@ -133,7 +139,9 @@ impl Simulation {
         for sample in samples {
             match sample {
                 Sample::SingleOneTime(name, value) => self.single.one_time(&name, value),
+                Sample::SingleAvg(name, value) => self.single.avg(&name, value),
                 Sample::SingleTimeAvg(name, value) => self.single.time_avg(&name, now, value),
+                Sample::SingleCount(name) => self.single.count(&name),
                 Sample::Series(name, labels, value) => {
                     self.series
                         .add(&name, labels, crate::utils::to_seconds(now), value)

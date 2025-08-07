@@ -8,8 +8,40 @@ use crate::utils::CsvFriend;
 #[derive(Debug)]
 pub enum Sample {
     SingleOneTime(String, f64),
+    SingleAvg(String, f64),
     SingleTimeAvg(String, f64),
+    SingleCount(String),
     Series(String, Vec<String>, f64),
+}
+
+#[derive(Default)]
+struct Count {
+    num: u64,
+}
+
+impl Count {
+    pub fn add(&mut self) {
+        self.num += 1;
+    }
+    pub fn tot(&self) -> f64 {
+        self.num as f64
+    }
+}
+
+#[derive(Default)]
+struct Avg {
+    sum: kahan::KahanSum<f64>,
+    num: u64,
+}
+
+impl Avg {
+    pub fn add(&mut self, value: f64) {
+        self.sum += value;
+        self.num += 1;
+    }
+    pub fn avg(&self) -> f64 {
+        self.sum.sum() / self.num as f64
+    }
 }
 
 struct TimeAvg {
@@ -19,14 +51,35 @@ struct TimeAvg {
     sum_time: f64,
 }
 
-impl TimeAvg {
-    pub fn new(last_update: u64) -> Self {
+impl Default for TimeAvg {
+    fn default() -> Self {
         Self {
-            last_update,
+            last_update: u64::MAX,
             last_value: 0.0,
             sum_values: 0.0,
             sum_time: 0.0,
         }
+    }
+}
+
+impl TimeAvg {
+    pub fn add(&mut self, now: u64, value: f64) {
+        if self.last_update != u64::MAX {
+            let delta = (now - self.last_update) as f64;
+            self.sum_values += delta * self.last_value;
+            self.sum_time += delta;
+        }
+        self.last_update = now;
+        self.last_value = value;
+    }
+    pub fn enable(&mut self, now: u64) {
+        self.last_update = now;
+    }
+    pub fn update_value(&mut self, value: f64) {
+        self.last_value = value;
+    }
+    pub fn finish(&mut self, now: u64) {
+        self.add(now, self.last_value);
     }
     pub fn avg(&self) -> f64 {
         self.sum_values / self.sum_time
@@ -38,7 +91,15 @@ pub struct OutputSingle {
     enabled: bool,
     warmup: u64,
     one_time: std::collections::BTreeMap<String, f64>,
+    avg: std::collections::BTreeMap<String, Avg>,
     time_avg: std::collections::BTreeMap<String, TimeAvg>,
+    count: std::collections::BTreeMap<String, Count>,
+}
+
+pub enum SingleMetricType {
+    Avg,
+    TimeAvg,
+    Count,
 }
 
 impl OutputSingle {
@@ -48,34 +109,63 @@ impl OutputSingle {
         }
     }
 
+    pub fn init(&mut self, name: &str, metric_type: SingleMetricType) {
+        match metric_type {
+            SingleMetricType::Avg => {
+                self.avg.insert(name.to_string(), Avg::default());
+            }
+            SingleMetricType::TimeAvg => {
+                self.time_avg.insert(name.to_string(), TimeAvg::default());
+            }
+            SingleMetricType::Count => {
+                self.count.insert(name.to_string(), Count::default());
+            }
+        };
+    }
+
+    pub fn avg(&mut self, name: &str, value: f64) {
+        let entry = self
+            .avg
+            .get_mut(name)
+            .unwrap_or_else(|| panic!("uninitialized metric {name}"));
+        if self.enabled {
+            entry.add(value);
+        }
+    }
+
     pub fn time_avg(&mut self, name: &str, now: u64, value: f64) {
         let entry = self
             .time_avg
-            .entry(name.to_string())
-            .or_insert_with(|| TimeAvg::new(self.warmup));
+            .get_mut(name)
+            .unwrap_or_else(|| panic!("uninitialized metric {name}"));
         if self.enabled {
-            let delta = (now - entry.last_update) as f64;
-            entry.sum_values += delta * entry.last_value;
-            entry.sum_time += delta;
-            entry.last_update = now;
+            entry.add(now, value);
+        } else {
+            entry.update_value(value);
         }
-        entry.last_value = value;
+    }
+
+    pub fn count(&mut self, name: &str) {
+        let entry = self
+            .count
+            .get_mut(name)
+            .unwrap_or_else(|| panic!("uninitialized metric {name}"));
+        if self.enabled {
+            entry.add();
+        }
     }
 
     pub fn enable(&mut self, now: u64) {
         self.enabled = true;
         self.warmup = now;
         for elem in &mut self.time_avg.values_mut() {
-            elem.last_update = now;
+            elem.enable(now);
         }
     }
 
     pub fn finish(&mut self, now: u64) {
-        for entry in &mut self.time_avg.values_mut() {
-            let delta = (now - entry.last_update) as f64;
-            entry.sum_values += delta * entry.last_value;
-            entry.sum_time += delta;
-            entry.last_update = now;
+        for elem in &mut self.time_avg.values_mut() {
+            elem.finish(now);
         }
     }
 }
@@ -83,13 +173,19 @@ impl OutputSingle {
 impl CsvFriend for OutputSingle {
     fn header(&self) -> String {
         format!(
-            "{},{}",
+            "{},{},{},{}",
             self.one_time
                 .keys()
                 .cloned()
                 .collect::<Vec<String>>()
                 .join(","),
+            self.avg.keys().cloned().collect::<Vec<String>>().join(","),
             self.time_avg
+                .keys()
+                .cloned()
+                .collect::<Vec<String>>()
+                .join(","),
+            self.count
                 .keys()
                 .cloned()
                 .collect::<Vec<String>>()
@@ -98,15 +194,25 @@ impl CsvFriend for OutputSingle {
     }
     fn to_csv(&self) -> String {
         format!(
-            "{},{}",
+            "{},{},{},{}",
             self.one_time
                 .values()
                 .map(|x| x.to_string())
                 .collect::<Vec<String>>()
                 .join(","),
+            self.avg
+                .values()
+                .map(|x| x.avg().to_string())
+                .collect::<Vec<String>>()
+                .join(","),
             self.time_avg
                 .values()
                 .map(|x| x.avg().to_string())
+                .collect::<Vec<String>>()
+                .join(","),
+            self.count
+                .values()
+                .map(|x| x.tot().to_string())
                 .collect::<Vec<String>>()
                 .join(",")
         )

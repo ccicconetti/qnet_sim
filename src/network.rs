@@ -128,7 +128,7 @@ impl Network {
 
     fn handle_node_event(&mut self, event: Event) -> (Vec<Event>, Vec<Sample>) {
         let mut event = event;
-        let now = event.time();
+        // let now = event.time();
         if let Some(transfer) = &mut event.transfer {
             if !transfer.done {
                 // Re-schedule the same event after adding a latency that takes
