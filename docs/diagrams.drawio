@@ -1,4 +1,4 @@
-<mxfile host="Electron" modified="2025-07-11T11:00:41.734Z" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/22.1.18 Chrome/120.0.6099.199 Electron/28.1.2 Safari/537.36" etag="rm0vX27uTytgKwjnCdRM" version="22.1.18" type="device" pages="5">
+<mxfile host="Electron" modified="2025-08-07T14:13:16.905Z" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/22.1.18 Chrome/120.0.6099.199 Electron/28.1.2 Safari/537.36" etag="0FOhsYmumH_-i4FQZcoH" version="22.1.18" type="device" pages="5">
   <diagram name="topology-grid" id="JlNEI8qelJMgjYbR65dI">
     <mxGraphModel dx="982" dy="743" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
       <root>
@@ -471,7 +471,7 @@
     </mxGraphModel>
   </diagram>
   <diagram id="-KX0cAjuBvOc7uVjjeM6" name="es_multi_hop">
-    <mxGraphModel dx="982" dy="743" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+    <mxGraphModel dx="1390" dy="854" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -1046,7 +1046,7 @@
     </mxGraphModel>
   </diagram>
   <diagram name="es_one_hop" id="wNSFuf57Ke6qEyRsW57r">
-    <mxGraphModel dx="818" dy="619" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+    <mxGraphModel dx="1158" dy="712" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
       <root>
         <mxCell id="7YdvanaiDVfTb0Uqs5nJ-0" />
         <mxCell id="7YdvanaiDVfTb0Uqs5nJ-1" parent="7YdvanaiDVfTb0Uqs5nJ-0" />
@@ -1339,7 +1339,7 @@
     </mxGraphModel>
   </diagram>
   <diagram id="Y-Ta0KGtWAwGjAm6PLO1" name="cell_fsm">
-    <mxGraphModel dx="982" dy="743" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+    <mxGraphModel dx="1390" dy="854" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
