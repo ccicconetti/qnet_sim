@@ -103,7 +103,7 @@ impl std::fmt::Display for EprFiveTuple {
 }
 
 /// Entanglement swapping request body.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct EsRequestData {
     /// EPR identifier.
     pub epr: EprFiveTuple,
@@ -122,6 +122,15 @@ pub struct EsRequestData {
     pub local_pair_id: u64,
 }
 
+/// Entanglement swapping free memory cell body.
+#[derive(Debug, PartialEq, Eq)]
+pub struct EsFreeMemoryCellData {
+    /// Identifier of the memory cell to free.
+    pub memory_cell: MemoryCellId,
+    /// Node that should free the given memory cell.
+    pub target: u32,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum NodeEventData {
     /// New EPR request requested by an app, identified by the five tuple
@@ -137,14 +146,8 @@ pub enum NodeEventData {
     /// required, consumed by the same node when the operation is completed
     /// (successfully or with failure is decided by the handler of this event).
     EsLocalComplete(EsRequestData),
-    /// Successful response to a request to perform entanglement swapping.
-    /// Created by a node, consumed by the logical peer that is the previous
-    /// hop in the path from the source to the destination of the ES.
-    EsSuccess(EsRequestData),
-    /// Failed response to a request to perform entanglement swapping.
-    /// Created by a node, consumed by the logical peer that is the previous
-    /// hop in the path from the source to the destination of the ES.
-    EsFailure(EsRequestData),
+    /// The memory cell associated with the EPR given can be freed.
+    EsFreeMemoryCell(EsFreeMemoryCellData),
     /// Entanglement swapping operation failed.
     /// Created by the node where end-to-end EPR creation fails.
     /// Consumed by the nodes along the path from the source to this node
@@ -161,8 +164,8 @@ impl NodeEventData {
             NodeEventData::EprRequestApp(data)
             | NodeEventData::EsRemoteComplete(data)
             | NodeEventData::EsRemoteFailed(data) => data.source_node_id,
+            NodeEventData::EsFreeMemoryCell(data) => data.target,
             NodeEventData::EsRequest(data) | NodeEventData::EsLocalComplete(data) => data.next_hop,
-            NodeEventData::EsSuccess(data) | NodeEventData::EsFailure(data) => data.prev_hop,
         }
     }
 }

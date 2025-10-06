@@ -6,21 +6,28 @@ use crate::output::Sample;
 use rand::{Rng, SeedableRng};
 
 #[derive(Debug, Clone)]
-enum Status {
-    Queued,
+enum EsRequestStatus {
+    QueuedSource,
+    QueuedIntermediate(u32, u32),
     WaitingForResponse(MemoryCellId),
 }
 
 #[derive(Debug, Clone)]
-struct Request {
+struct EsRequest {
+    /// EPR five tuple.
+    epr: EprFiveTuple,
+    /// Status
+    status: EsRequestStatus,
+    /// Path
+    path: Vec<u32>,
+}
+
+#[derive(Debug, Clone)]
+struct AppRequest {
     /// Time when the request was received.
     received: u64,
     /// EPR five tuple.
     epr: EprFiveTuple,
-    /// Status
-    status: Status,
-    /// Path
-    path: Vec<u32>,
 }
 
 #[derive(Debug, Clone)]
@@ -47,8 +54,10 @@ pub struct Node {
     applications: std::collections::HashMap<u16, Box<dyn crate::event::EventHandler>>,
     /// The logical topology.
     logical_topology: std::rc::Rc<crate::logical_topology::LogicalTopology>,
-    /// Pending requests grouped by peer.
-    pending_requests: std::collections::HashMap<u32, Vec<Request>>,
+    /// Pending ES requests grouped by peer.
+    pending_es_requests: std::collections::HashMap<u32, Vec<EsRequest>>,
+    /// Pending application requests.
+    pending_app_requests: Vec<AppRequest>,
     /// Pseudo-random number generator.
     rng: rand::rngs::StdRng,
 }
@@ -63,7 +72,7 @@ impl std::fmt::Display for Node {
             writeln!(f, "NIC peer {peer}: {nic}")?;
         }
         writeln!(f, "apps on ports {:?}", self.applications.keys())?;
-        for (peer, requests) in &self.pending_requests {
+        for (peer, requests) in &self.pending_es_requests {
             for request in requests {
                 writeln!(f, "REQ peer {peer}: {request:?}")?;
             }
@@ -87,7 +96,8 @@ impl Node {
             nics_slave: std::collections::HashMap::new(),
             applications: std::collections::HashMap::new(),
             logical_topology,
-            pending_requests: std::collections::HashMap::new(),
+            pending_es_requests: std::collections::HashMap::new(),
+            pending_app_requests: vec![],
             rng: rand::rngs::StdRng::seed_from_u64(init_seed + node_id as u64),
         }
     }
@@ -155,7 +165,7 @@ impl Node {
         };
 
         // Schedule pending requests for this peer, if any.
-        let (events, mut samples) = self.schedule_pending_requests(peer_node_id);
+        let (events, mut samples) = self.schedule_pending_es_requests(peer_node_id);
 
         samples.push(Sample::Series(
             "occupancy".to_string(),
@@ -204,8 +214,7 @@ impl Node {
                 NodeEventData::EprRequestApp(epr) => self.handle_epr_request_app(now, now, epr),
                 NodeEventData::EsRequest(data) => self.handle_es_request(now, data),
                 NodeEventData::EsLocalComplete(data) => self.handle_es_local_complete(now, data),
-                NodeEventData::EsSuccess(data) => self.handle_es_response(now, data, true),
-                NodeEventData::EsFailure(data) => self.handle_es_response(now, data, false),
+                NodeEventData::EsFreeMemoryCell(data) => self.handle_es_free_memory_cell(now, data),
                 NodeEventData::EsRemoteComplete(data) => self.handle_es_remote_complete(now, data),
                 NodeEventData::EsRemoteFailed(data) => self.handle_es_remote_failed(now, data),
             }
@@ -233,6 +242,11 @@ impl Node {
             "src and dst nodes must be different"
         );
 
+        self.pending_app_requests.push(AppRequest {
+            received,
+            epr: epr.clone(),
+        });
+
         // Find the path to go from src to dst in the logical topology.
         assert_eq!(self.node_id, epr.source_node_id);
         let path = self
@@ -243,43 +257,39 @@ impl Node {
         assert_eq!(epr.target_node_id, *path.last().unwrap());
 
         let peer = *path.last().unwrap();
-        self.pending_requests
+        self.pending_es_requests
             .entry(peer)
             .or_default()
-            .push(Request {
-                received,
+            .push(EsRequest {
                 epr,
-                status: Status::Queued,
+                status: EsRequestStatus::QueuedSource,
                 path,
             });
 
-        self.schedule_pending_requests(peer)
+        self.schedule_pending_es_requests(peer)
     }
 
     /// Handle ES request from another node.
     ///
+    /// Try to lock the EPR pair in the specified slave position.
+    ///
+    /// If the operation succeeds, then:
+    ///
+    /// - If this is the target node, we schedule a EsLocalComplete to perform
+    ///   X/Z corrections.
+    /// - Else, if this is an intermediate node, we schedule a request to lock
+    ///   an EPR pair (master) that will be needed for the BSM.
+    ///
     /// If the memory cell does not contain what the master expects, then
-    /// send an EsFailure to the previous hop to free resources.
+    /// send an EsFailure to the predecessor to free the EPR pair and a
+    /// EsRemoteFailed to the source node, so that it can try again.
     fn handle_es_request(&mut self, _now: u64, data: EsRequestData) -> (Vec<Event>, Vec<Sample>) {
         assert_eq!(self.node_id, data.next_hop);
 
-        #[cfg(debug_assertions)]
-        {
-            let mut prev_hop_pos = data
-                .path
-                .iter()
-                .position(|x| *x == self.node_id)
-                .expect("this node is not present in the path of an EsRequest")
-                as u32;
-            assert!(
-                prev_hop_pos > 0,
-                "the first node ({}) in the path ({:?}) cannot receive an EsRequest",
-                self.node_id,
-                data.path,
-            );
-            prev_hop_pos -= 1;
-            assert_eq!(data.path[prev_hop_pos as usize], data.prev_hop);
-        }
+        let predecessor = self.predecessor(&data.path);
+        assert_eq!(data.prev_hop, predecessor);
+
+        let source = *data.path.first().unwrap();
 
         let mut events = vec![];
         let mut samples = vec![];
@@ -288,7 +298,7 @@ impl Node {
         // indicated in the request.
         let nic = self
             .nics_slave
-            .get_mut(&data.prev_hop)
+            .get_mut(&predecessor)
             .expect("received an EsRequest from an unknown peer");
 
         if nic.used(data.local_pair_id) {
@@ -296,14 +306,14 @@ impl Node {
             // We now schedule an event for when the local operations (Bell-state
             // measurement or X/Z corrections) need to be done.
 
-            let event_delay = if data.epr.target_node_id == self.node_id {
+            if data.epr.target_node_id == self.node_id {
                 // This is the final target node.
                 //
                 // If this is a single hop EPR request, then the EPR pair can
                 // be used immediately. Otherwise, X/Z corrections might be
                 // necessary dependin on the outcome of the BSM operations
                 // along the path.
-                if data.path.len() > 2 {
+                let event_delay = if data.path.len() > 2 {
                     let rand = self.rng.gen_range(0..4);
                     if rand == 0 {
                         // no corrections
@@ -317,28 +327,52 @@ impl Node {
                     }
                 } else {
                     0.0
-                }
+                };
+                events.push(Event::new(
+                    event_delay,
+                    EventType::NodeEvent(NodeEventData::EsLocalComplete(data)),
+                ));
             } else {
-                // This is an intermediate node, which has to perform entanglement
-                // swapping.
-                self.properties.swapping_duration
-            };
+                // This is an intermediate node, which has to perform ES.
+                let successor = self.successor(&data.path);
+                self.pending_es_requests
+                    .entry(successor)
+                    .or_default()
+                    .push(EsRequest {
+                        epr: data.epr,
+                        status: EsRequestStatus::QueuedIntermediate(data.prev_hop, data.next_hop),
+                        path: data.path,
+                    });
 
-            events.push(Event::new(
-                event_delay,
-                EventType::NodeEvent(NodeEventData::EsLocalComplete(data)),
-            ));
+                self.schedule_pending_es_requests(successor);
+            }
         } else {
+            // The memory cell does not contain what the master expects.
             if log::log_enabled!(log::Level::Debug) {
                 nic.print_all_cells();
             }
 
-            // The memory cell does not contain what the master expects.
-            let dst_node_id = data.prev_hop;
+            // Free the memory cell of the predecessor.
+            let memory_cell = MemoryCellId {
+                neighbor_node_id: self.node_id,
+                role: crate::nic::Role::Master,
+                local_pair_id: data.local_pair_id,
+            };
             events.push(Event::new_transfer(
-                EventType::NodeEvent(NodeEventData::EsFailure(data)),
+                EventType::NodeEvent(NodeEventData::EsFreeMemoryCell(EsFreeMemoryCellData {
+                    memory_cell,
+                    target: predecessor,
+                })),
                 self.node_id,
-                dst_node_id,
+                predecessor,
+            ));
+
+            // Notify the source node that the end-to-end entanglement failed.
+            let epr = data.epr.clone();
+            events.push(Event::new_transfer(
+                EventType::NodeEvent(NodeEventData::EsRemoteFailed(epr)),
+                self.node_id,
+                source,
             ));
 
             samples.push(Sample::ScalarCount("slave_fails".to_string()))
@@ -349,15 +383,15 @@ impl Node {
 
     /// Handle completion of local operations for an ES.
     ///
+    /// If the operation was a correction:
+    /// - Send `EsRemoteComplete` to source node.
+    /// - Notify `EprResponse` (is_source = false) to the local app.
+    ///
     /// If the operation was a BSM, decide (randomly) if successful:
     /// - Success: send `EsSuccess` to the previous hop and send a new
     ///   `EsRequest` to the next hop.
     /// - Failure: send `EsFailure` to the previous hop and free the local EPR
     ///   pair (slave).
-    ///
-    /// If the operation was a correction:
-    /// - Send `EsRemoteComplete` to source node.
-    /// - Notify `EprResponse` (is_source = false) to the local app.
     fn handle_es_local_complete(
         &mut self,
         _now: u64,
@@ -368,7 +402,18 @@ impl Node {
 
         let mut events = vec![];
         let mut samples = vec![];
+        let pos = data.path.iter().position(|x| *x == self.node_id).unwrap();
+        assert!(
+            pos >= 1,
+            "EsLocalComplete received at node {} for EPR {}, with path {:?}",
+            self.node_id,
+            data.epr,
+            data.path
+        );
+        let source = *data.path.first().unwrap();
+        let predecessor = data.path[pos - 1];
         if self.node_id == *data.path.last().unwrap() {
+            assert!(pos == data.path.len() - 1);
             // This node is the last element in the path, which means that the
             // local operation was an X/Z correction, which never fails.
             let src_node_id = *data.path.first().unwrap();
@@ -393,47 +438,123 @@ impl Node {
             ));
         } else {
             // This is an intermediate node.
+            let epr = data.epr.clone();
+            assert!(pos < data.path.len() - 1);
+            let successor = data.path[pos + 1];
+
+            let pred_local_pair_id = data.local_pair_id;
+
+            let es_request = self
+                .pending_es_requests
+                .get(&successor)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "received at node {} an EsLocalComplete for unknown peer node {}",
+                        self.node_id, successor
+                    );
+                })
+                .iter()
+                .find(|x| x.epr == data.epr)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "could not find at node {} memory cell for EPR {}",
+                        self.node_id, epr
+                    );
+                });
+
+            let succ_memory_cell =
+                if let EsRequestStatus::WaitingForResponse(memory_cell) = &es_request.status {
+                    memory_cell
+                } else {
+                    panic!(
+                        "wrong EsRequest status at node {} for EPR {}: {:?}",
+                        self.node_id, data.epr, es_request
+                    );
+                };
+
             if self.rng.gen_bool(self.properties.swapping_success_prob) {
                 // Successful Bell-state measurement.
-                let dst_node_id = data.prev_hop;
-                events.push(Event::new_transfer(
-                    EventType::NodeEvent(NodeEventData::EsSuccess(data)),
-                    self.node_id,
-                    dst_node_id,
-                ));
                 samples.push(Sample::ScalarAvg("bsm_prob".to_string(), 1.0));
+
+                // Send an EsRequest message to the successor.
+                events.push(Event::new_transfer(
+                    EventType::NodeEvent(NodeEventData::EsRequest(EsRequestData {
+                        epr: data.epr,
+                        prev_hop: self.node_id,
+                        next_hop: successor,
+                        path: data.path.clone(),
+                        local_pair_id: succ_memory_cell.local_pair_id,
+                    })),
+                    self.node_id,
+                    successor,
+                ));
             } else {
                 // Failed Bell-state measurement.
-                let dst_node_id = data.prev_hop;
-                events.push(Event::new_transfer(
-                    EventType::NodeEvent(NodeEventData::EsFailure(data)),
-                    self.node_id,
-                    dst_node_id,
-                ));
                 samples.push(Sample::ScalarAvg("bsm_prob".to_string(), 0.0));
+
+                // Ask the successor to free the memory cell consumed.
+                assert!(matches!(succ_memory_cell.role, crate::nic::Role::Master));
+                let succ_memory_cell_reverse = MemoryCellId {
+                    neighbor_node_id: self.node_id,
+                    role: crate::nic::Role::Slave,
+                    local_pair_id: succ_memory_cell.local_pair_id,
+                };
+                events.push(Event::new_transfer(
+                    EventType::NodeEvent(NodeEventData::EsFreeMemoryCell(EsFreeMemoryCellData {
+                        memory_cell: succ_memory_cell_reverse,
+                        target: successor,
+                    })),
+                    self.node_id,
+                    successor,
+                ));
+
+                // Notify the source that the remote entanglement has failed.
+                events.push(Event::new_transfer(
+                    EventType::NodeEvent(NodeEventData::EsRemoteFailed(data.epr)),
+                    self.node_id,
+                    source,
+                ));
+            }
+
+            // If this is not the second hop in the chain, free the consumed
+            // qubit at this node and ask the predecessor to do the same.
+            if pos > 1 {
+                let pred_memory_cell = MemoryCellId {
+                    neighbor_node_id: predecessor,
+                    role: crate::nic::Role::Slave,
+                    local_pair_id: pred_local_pair_id,
+                };
+                self.local_free(&pred_memory_cell);
+
+                let pred_memory_cell_reverse = MemoryCellId {
+                    neighbor_node_id: self.node_id,
+                    role: crate::nic::Role::Master,
+                    local_pair_id: pred_local_pair_id,
+                };
+                events.push(Event::new_transfer(
+                    EventType::NodeEvent(NodeEventData::EsFreeMemoryCell(EsFreeMemoryCellData {
+                        memory_cell: pred_memory_cell_reverse,
+                        target: predecessor,
+                    })),
+                    self.node_id,
+                    predecessor,
+                ));
             }
         }
 
         (events, samples)
     }
 
-    /// Handle response received for an ES request.
-    ///
-    /// If failed:
-    /// - Communicate failure to the source of the path.
-    /// - Free local EPR pair (master).
-    ///
-    /// If success:
-    /// - Free previous EPR pair (if any).
-    ///
-    /// In both cases remove the request from the pending queue
-    fn handle_es_response(
+    /// Free the local memory cell corresponding to the given EPR.
+    fn handle_es_free_memory_cell(
         &mut self,
         _now: u64,
-        data: EsRequestData,
-        success: bool,
+        data: EsFreeMemoryCellData,
     ) -> (Vec<Event>, Vec<Sample>) {
-        // XXX
+        assert!(data.target == self.node_id);
+
+        self.local_free(&data.memory_cell);
+
         (vec![], vec![])
     }
 
@@ -449,42 +570,32 @@ impl Node {
     ) -> (Vec<Event>, Vec<Sample>) {
         assert_eq!(self.node_id, epr.source_node_id);
 
-        for requests in &mut self.pending_requests.values_mut() {
-            if let Some(epr_ndx) = requests.iter().position(|x| x.epr == epr) {
-                let request = requests.swap_remove(epr_ndx);
-                if let Status::WaitingForResponse(memory_cell) = request.status {
-                    let events = vec![Event::new(
-                        0.0_f64,
-                        EventType::AppEvent(AppEventData::EprResponse(EprResponseData {
-                            epr,
-                            is_source: true,
-                            memory_cell: Some(memory_cell),
-                        })),
-                    )];
-                    return (
-                        events,
-                        vec![Sample::Series(
-                            "epr-request-latency".to_string(),
-                            vec![
-                                self.node_id.to_string(),
-                                (request.path.len() - 1).to_string(),
-                            ],
-                            crate::utils::to_seconds(now - request.received),
-                        )],
-                    );
-                } else {
-                    panic!(
-                        "wrong queued request at node {} for EPR {}: {:?}",
-                        self.node_id, epr, request
-                    );
-                }
-            }
-        }
+        let app_request = self.pop_app_request(&epr);
+        let (_peer, es_request) = self.pop_es_request(&epr);
 
-        panic!(
-            "could not find a queued request at node {} for EPR {}",
-            self.node_id, epr
-        )
+        if let EsRequestStatus::WaitingForResponse(memory_cell) = es_request.status {
+            let events = vec![Event::new(
+                0.0_f64,
+                EventType::AppEvent(AppEventData::EprResponse(EprResponseData {
+                    epr,
+                    is_source: true,
+                    memory_cell: Some(memory_cell),
+                })),
+            )];
+            (
+                events,
+                vec![Sample::Series(
+                    "epr-request-latency".to_string(),
+                    vec![
+                        self.node_id.to_string(),
+                        (es_request.path.len() - 1).to_string(),
+                    ],
+                    crate::utils::to_seconds(now - app_request.received),
+                )],
+            )
+        } else {
+            panic!("invalid status of ES request at node {} for EPR {}: expected WaitingForResponse, found {:?}", self.node_id, epr, es_request.status)
+        }
     }
 
     /// Handle indication at the source node that a remote entanglement
@@ -499,48 +610,202 @@ impl Node {
     ) -> (Vec<Event>, Vec<Sample>) {
         assert_eq!(self.node_id, epr.source_node_id);
 
-        for requests in &mut self.pending_requests.values_mut() {
-            if let Some(epr_ndx) = requests.iter().position(|x| x.epr == epr) {
-                let request = requests.swap_remove(epr_ndx);
-                return self.handle_epr_request_app(now, request.received, request.epr);
+        // Free the local memory cell (master).
+        let memory_cell = self.local_free_by_epr(&epr).unwrap_or_else(|| {
+            panic!(
+                "could not find at node {} memory cell for EPR {}",
+                self.node_id, epr
+            );
+        });
+        assert!(matches!(memory_cell.role, crate::nic::Role::Master));
+
+        // Send request to free the peer memory cell (slave).
+        let memory_cell_reverse = MemoryCellId {
+            neighbor_node_id: self.node_id,
+            role: crate::nic::Role::Slave,
+            local_pair_id: memory_cell.local_pair_id,
+        };
+        let target = memory_cell.neighbor_node_id;
+        let mut events = vec![Event::new_transfer(
+            EventType::NodeEvent(NodeEventData::EsFreeMemoryCell(EsFreeMemoryCellData {
+                memory_cell: memory_cell_reverse,
+                target,
+            })),
+            self.node_id,
+            target,
+        )];
+
+        // Reschedule the failed app request.
+        let app_request = self.pop_app_request(&epr);
+        let (mut new_events, _new_samples) =
+            self.handle_epr_request_app(now, app_request.received, app_request.epr);
+        events.append(&mut new_events);
+
+        (events, vec![])
+    }
+
+    /// Return the predecessor of this node in a path.
+    fn predecessor(&mut self, path: &Vec<u32>) -> u32 {
+        let pos = path
+            .iter()
+            .position(|x| *x == self.node_id)
+            .unwrap_or_else(|| panic!("cannot find node {} in path {:?}", self.node_id, path));
+        assert!(
+            pos >= 1,
+            "cannot find predecessor of node {} in path {:?}",
+            self.node_id,
+            path
+        );
+        path[pos - 1]
+    }
+
+    /// Return the successor of this node in a path.
+    fn successor(&mut self, path: &Vec<u32>) -> u32 {
+        let pos = path
+            .iter()
+            .position(|x| *x == self.node_id)
+            .unwrap_or_else(|| panic!("cannot find node {} in path {:?}", self.node_id, path));
+        assert!(
+            pos < path.len() - 1,
+            "cannot find successor of node {} in path {:?}",
+            self.node_id,
+            path
+        );
+        path[pos + 1]
+    }
+
+    /// Free a local memory cell. Return true if consumed.
+    fn local_free(&mut self, memory_cell: &MemoryCellId) -> bool {
+        let es_requests = &mut self
+            .pending_es_requests
+            .get_mut(&memory_cell.neighbor_node_id)
+            .unwrap_or_else(|| {
+                panic!(
+                    "could not at find node {} any memory cell with neighbor {}",
+                    self.node_id, memory_cell.neighbor_node_id
+                )
+            });
+        let pos = es_requests
+            .iter()
+            .position(|x| {
+                if let EsRequestStatus::WaitingForResponse(cur_memory_cell) = &x.status {
+                    *cur_memory_cell == *memory_cell
+                } else {
+                    false
+                }
+            })
+            .unwrap_or_else(|| {
+                panic!(
+                    "could not at find node {} memory cell {:?}",
+                    self.node_id, memory_cell
+                )
+            });
+        es_requests.remove(pos);
+
+        if let Some(nic) = self.nics_master.get_mut(&memory_cell.neighbor_node_id) {
+            nic.consume(memory_cell.local_pair_id).is_some()
+        } else {
+            false
+        }
+    }
+
+    /// Free a local memory cell by EPR. Return memory cell if consumed.
+    fn local_free_by_epr(&mut self, epr: &EprFiveTuple) -> Option<MemoryCellId> {
+        for (peer, es_requests) in &mut self.pending_es_requests {
+            if let Some(pos) = self.pending_app_requests.iter().position(|x| x.epr == *epr) {
+                let es_request = es_requests.remove(pos);
+                if let EsRequestStatus::WaitingForResponse(memory_cell) = &es_request.status {
+                    assert_eq!(*peer, memory_cell.neighbor_node_id);
+                    if let Some(nic) = self.nics_master.get_mut(&memory_cell.neighbor_node_id) {
+                        if nic.consume(memory_cell.local_pair_id).is_some() {
+                            return Some(memory_cell.clone());
+                        }
+                    }
+                }
             }
         }
+        None
+    }
 
-        (vec![], vec![])
+    /// Remove an app request from the queue.
+    fn pop_app_request(&mut self, epr: &EprFiveTuple) -> AppRequest {
+        if let Some(app_ndx) = self.pending_app_requests.iter().position(|x| x.epr == *epr) {
+            self.pending_app_requests.remove(app_ndx)
+        } else {
+            panic!(
+                "could not find queued app request at node {} for EPR {}",
+                self.node_id, epr
+            )
+        }
+    }
+
+    /// Remove an ES request from the queue.
+    fn pop_es_request(&mut self, epr: &EprFiveTuple) -> (u32, EsRequest) {
+        for (peer, es_requests) in &mut self.pending_es_requests {
+            if let Some(epr_ndx) = es_requests.iter().position(|x| x.epr == *epr) {
+                return (*peer, es_requests.swap_remove(epr_ndx));
+            }
+        }
+        panic!(
+            "could not find queued ES request at node {} for EPR {}",
+            self.node_id, epr
+        );
     }
 
     /// Schedule requests pending for a given peer, if possible.
-    fn schedule_pending_requests(&mut self, peer: u32) -> (Vec<Event>, Vec<Sample>) {
+    /// Mark the memory cell as used, so that it cannot be overwritten.
+    fn schedule_pending_es_requests(&mut self, peer: u32) -> (Vec<Event>, Vec<Sample>) {
         let log_status = format!("{self}");
         let mut events = vec![];
         if let Some(nic) = self.nics_master.get_mut(&peer) {
-            if let Some(requests) = &mut self.pending_requests.get_mut(&peer) {
+            if let Some(requests) = &mut self.pending_es_requests.get_mut(&peer) {
                 if !requests.is_empty() {
                     log::debug!("{log_status}");
                 }
                 for request in requests.iter_mut() {
-                    if let Status::Queued = request.status {
-                        if let Some(local_pair_id) = nic.newest_valid() {
-                            nic.used(local_pair_id);
-                            events.push(Event::new_transfer(
-                                EventType::NodeEvent(NodeEventData::EsRequest(EsRequestData {
-                                    epr: request.epr.clone(),
-                                    prev_hop: self.node_id,
-                                    next_hop: peer,
-                                    path: request.path.clone(),
-                                    local_pair_id,
-                                })),
-                                self.node_id,
-                                peer,
-                            ));
-                            request.status = Status::WaitingForResponse(MemoryCellId {
-                                neighbor_node_id: peer,
-                                role: crate::nic::Role::Master,
-                                local_pair_id,
-                            });
-                        } else {
-                            break;
+                    if matches!(request.status, EsRequestStatus::WaitingForResponse(_)) {
+                        continue;
+                    }
+
+                    if let Some(local_pair_id) = nic.newest_valid() {
+                        nic.used(local_pair_id);
+                        request.status = EsRequestStatus::WaitingForResponse(MemoryCellId {
+                            neighbor_node_id: peer,
+                            role: crate::nic::Role::Master,
+                            local_pair_id,
+                        });
+                        match request.status {
+                            EsRequestStatus::QueuedSource => {
+                                events.push(Event::new_transfer(
+                                    EventType::NodeEvent(NodeEventData::EsRequest(EsRequestData {
+                                        epr: request.epr.clone(),
+                                        prev_hop: self.node_id,
+                                        next_hop: peer,
+                                        path: request.path.clone(),
+                                        local_pair_id,
+                                    })),
+                                    self.node_id,
+                                    peer,
+                                ));
+                            }
+                            EsRequestStatus::QueuedIntermediate(prev_hop, next_hop) => {
+                                events.push(Event::new(
+                                    self.properties.swapping_duration,
+                                    EventType::NodeEvent(NodeEventData::EsLocalComplete(
+                                        EsRequestData {
+                                            epr: request.epr.clone(),
+                                            prev_hop,
+                                            next_hop,
+                                            path: request.path.clone(),
+                                            local_pair_id,
+                                        },
+                                    )),
+                                ));
+                            }
+                            EsRequestStatus::WaitingForResponse(_) => {}
                         }
+                    } else {
+                        break;
                     }
                 }
             }
