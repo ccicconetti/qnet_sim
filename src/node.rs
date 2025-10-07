@@ -164,14 +164,26 @@ impl Node {
         role: super::nic::Role,
         epr_pair_id: u64,
     ) -> (Vec<Event>, Vec<Sample>) {
+        let mut events = vec![];
+        let this_node_id = self.node_id;
         let occupancy = {
             let nic = self.get_nic(peer_node_id, &role);
-            nic.add_epr_pair(now, epr_pair_id);
+            let (epr_pair_id, _added) = nic.add_epr_pair(now, epr_pair_id);
+            if let Some(epr_pair_id) = epr_pair_id {
+                events.push(Event::new(
+                    0.0,
+                    EventType::NetworkEvent(NetworkEventData::EprFree(EprFreeData {
+                        epr_pair_id,
+                        node_id: this_node_id,
+                    })),
+                ));
+            }
             nic.occupancy()
         };
 
         // Schedule pending requests for this peer, if any.
-        let (events, mut samples) = self.schedule_pending_es_requests(peer_node_id);
+        let (mut new_events, mut samples) = self.schedule_pending_es_requests(peer_node_id);
+        events.append(&mut new_events);
 
         samples.push(Sample::Series(
             "occupancy".to_string(),

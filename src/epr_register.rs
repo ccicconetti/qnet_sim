@@ -65,6 +65,8 @@ impl EprRegister {
             "The EPR pair register contains already ID {epr_pair_id}"
         );
 
+        println!("XXX {}", self.epr_pairs.len());
+
         self.last_epr_pair_id += 1;
         epr_pair_id
     }
@@ -88,6 +90,8 @@ impl EprRegister {
             None
         }
     }
+
+    // Entangle XXX
 }
 
 #[cfg(test)]

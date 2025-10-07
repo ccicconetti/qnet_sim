@@ -158,6 +158,7 @@ impl Network {
                 NetworkEventData::EprGenerated(data) => self.handle_epr_generated(now, data),
                 NetworkEventData::EprNotified(data) => self.handle_epr_notified(now, data),
                 NetworkEventData::EprConsume(data) => self.handle_epr_consume(now, data),
+                NetworkEventData::EprFree(data) => self.handle_epr_free(now, data),
             }
         } else {
             panic!(
@@ -308,6 +309,20 @@ impl Network {
                 fidelity,
             )],
         )
+    }
+
+    /// Consume the half EPR pair and compute its fidelity.
+    fn handle_epr_free(&mut self, _now: u64, data: EprFreeData) -> (Vec<Event>, Vec<Sample>) {
+        let mut samples = vec![];
+        if let Some((_updated, _fidelity)) =
+            self.epr_register.consume(data.epr_pair_id, data.node_id)
+        {
+            samples.push(Sample::ScalarCount("epr_frees".to_string()))
+        } else {
+            panic!("trying to free unknown EPR pair {data:?}");
+        }
+
+        (vec![], samples)
     }
 }
 

@@ -194,8 +194,11 @@ impl Nic {
     /// Add a fresh EPR pair to an empty memory cell or, if not available,
     /// overwrite the oldest non-empty memory cell.
     /// Never overwrites currently in-use memory cells.
-    /// Do nothing if all the memory cells are current in-use and return false.
-    pub fn add_epr_pair(&mut self, now: u64, epr_pair_id: u64) -> bool {
+    /// Do nothing if all the memory cells are current in-use.
+    ///
+    /// Return the identifier of the overwritten EPR pair (if that was the case)
+    /// and a Boolean flag equal to true only if the EPR pair was added.
+    pub fn add_epr_pair(&mut self, now: u64, epr_pair_id: u64) -> (Option<u64>, bool) {
         let first_empty = self
             .memory_cells
             .iter()
@@ -205,15 +208,14 @@ impl Nic {
 
         if let Some(index) = first_empty {
             self.memory_cells[index] = MemoryCell::new(now, epr_pair_id);
-            return true;
-        }
-
-        if let Some(index) = self.oldest_valid() {
+            (None, true)
+        } else if let Some(index) = self.oldest_valid() {
+            let overwritten_id = self.memory_cells[index].local_pair_id().unwrap();
             self.memory_cells[index] = MemoryCell::new(now, epr_pair_id);
-            return true;
+            (Some(overwritten_id), true)
+        } else {
+            (None, false)
         }
-
-        false
     }
 
     /// Consume an EPR pair. Return None if there is no memory cell
@@ -413,7 +415,7 @@ mod tests {
         assert_float_eq::assert_f64_near!(1.0, nic.occupancy());
 
         // Try to add a new pair.
-        assert!(!nic.add_epr_pair(999, 999));
+        assert!(!nic.add_epr_pair(999, 999).1);
 
         // Cannot use cells already used.
         for i in 0..10 {
@@ -425,7 +427,7 @@ mod tests {
 
         // New pairs can be added, they will overwrite the only valid one.
         for i in 0..100 {
-            assert!(nic.add_epr_pair(1000 + i, 2000 + i));
+            assert!(nic.add_epr_pair(1000 + i, 2000 + i).1);
         }
 
         // Consume all the EPR pairs.

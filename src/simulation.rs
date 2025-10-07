@@ -109,6 +109,7 @@ impl Simulation {
         single.init("bsm_prob", crate::output::ScalarMetricType::Avg);
         single.init("event_queue_len", crate::output::ScalarMetricType::TimeAvg);
         single.init("local_epr_misses", crate::output::ScalarMetricType::Count);
+        single.init("epr_frees", crate::output::ScalarMetricType::Count);
 
         // Create data structure for time series, also setting the headers
         let mut series = crate::output::OutputSeries::new(config.user_config.series_ignore.clone());
