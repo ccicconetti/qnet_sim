@@ -135,6 +135,15 @@ pub enum Role {
     Slave,
 }
 
+impl Role {
+    pub fn opposite(role: &Self) -> Self {
+        match role {
+            Self::Master => Self::Slave,
+            Self::Slave => Self::Master,
+        }
+    }
+}
+
 impl std::fmt::Display for Role {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -276,10 +285,12 @@ impl Nic {
         }
     }
 
-    pub fn print_all_cells(&self) {
+    pub fn dump(&self) -> Vec<String> {
+        let mut ret = vec![];
         for (ndx, memory_cell) in self.memory_cells.iter().enumerate() {
-            println!("{}\t{} {:?}", ndx, memory_cell, memory_cell.data());
+            ret.push(format!("{}\t{} {:?}", ndx, memory_cell, memory_cell.data()));
         }
+        ret
     }
 }
 

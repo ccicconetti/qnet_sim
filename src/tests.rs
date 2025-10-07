@@ -120,6 +120,13 @@ mod tests {
         Config { seed, user_config }
     }
 
+    #[ignore]
+    #[test]
+    fn test_config_to_json() {
+        let config = make_config(42);
+        println!("{}", serde_json::to_string_pretty(&config).unwrap());
+    }
+
     #[test]
     fn test_sim_single_logical_hop() -> anyhow::Result<()> {
         // env_logger::init();

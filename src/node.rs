@@ -8,8 +8,8 @@ use rand::{Rng, SeedableRng};
 #[derive(Debug, Clone)]
 enum EsRequestStatus {
     QueuedSource,
-    QueuedIntermediate(u32, u32),
-    WaitingForResponse(MemoryCellId),
+    QueuedIntermediate,
+    Waiting(MemoryCellId),
 }
 
 #[derive(Debug, Clone)]
@@ -177,14 +177,31 @@ impl Node {
     }
 
     /// Consume the qubit of an EPR stored in a memory cell in one of the NICs.
-    /// Return the creation time and identifier.
+    /// Return the creation time and identifier and the events/samples.
     pub fn consume(
         &mut self,
         peer_node_id: u32,
         role: &super::nic::Role,
         local_pair_id: u64,
-    ) -> Option<crate::nic::MemoryCellData> {
-        self.get_nic(peer_node_id, role).consume(local_pair_id)
+    ) -> (Option<crate::nic::MemoryCellData>, Vec<Event>, Vec<Sample>) {
+        let memory_cell_data = self.get_nic(peer_node_id, role).consume(local_pair_id);
+
+        // Free the memory cell of the peer.
+        let memory_cell = MemoryCellId {
+            neighbor_node_id: self.node_id,
+            role: crate::nic::Role::opposite(role),
+            local_pair_id,
+        };
+        let events = vec![Event::new_transfer(
+            EventType::NodeEvent(NodeEventData::EsFreeMemoryCell(EsFreeMemoryCellData {
+                memory_cell,
+                target: peer_node_id,
+            })),
+            self.node_id,
+            peer_node_id,
+        )];
+
+        (memory_cell_data, events, vec![])
     }
 
     /// Return the right set of NICs depending on the role.
@@ -247,6 +264,16 @@ impl Node {
             epr: epr.clone(),
         });
 
+        log::debug!(
+            "node {} pending app requests:\n{}",
+            self.node_id,
+            self.pending_app_requests
+                .iter()
+                .map(|x| format!("{x:?}"))
+                .collect::<Vec<String>>()
+                .join("\n")
+        );
+
         // Find the path to go from src to dst in the logical topology.
         assert_eq!(self.node_id, epr.source_node_id);
         let path = self
@@ -256,9 +283,9 @@ impl Node {
         assert_eq!(epr.source_node_id, *path.first().unwrap());
         assert_eq!(epr.target_node_id, *path.last().unwrap());
 
-        let peer = *path.last().unwrap();
+        let successor = self.successor(&path);
         self.pending_es_requests
-            .entry(peer)
+            .entry(successor)
             .or_default()
             .push(EsRequest {
                 epr,
@@ -266,7 +293,7 @@ impl Node {
                 path,
             });
 
-        self.schedule_pending_es_requests(peer)
+        self.schedule_pending_es_requests(successor)
     }
 
     /// Handle ES request from another node.
@@ -284,11 +311,9 @@ impl Node {
     /// send an EsFailure to the predecessor to free the EPR pair and a
     /// EsRemoteFailed to the source node, so that it can try again.
     fn handle_es_request(&mut self, _now: u64, data: EsRequestData) -> (Vec<Event>, Vec<Sample>) {
-        assert_eq!(self.node_id, data.next_hop);
+        assert_eq!(self.node_id, data.target);
 
         let predecessor = self.predecessor(&data.path);
-        assert_eq!(data.prev_hop, predecessor);
-
         let source = *data.path.first().unwrap();
 
         let mut events = vec![];
@@ -340,17 +365,22 @@ impl Node {
                     .or_default()
                     .push(EsRequest {
                         epr: data.epr,
-                        status: EsRequestStatus::QueuedIntermediate(data.prev_hop, data.next_hop),
+                        status: EsRequestStatus::QueuedIntermediate,
                         path: data.path,
                     });
 
-                self.schedule_pending_es_requests(successor);
+                let (mut new_events, mut new_samples) =
+                    self.schedule_pending_es_requests(successor);
+                events.append(&mut new_events);
+                samples.append(&mut new_samples);
             }
         } else {
             // The memory cell does not contain what the master expects.
-            if log::log_enabled!(log::Level::Debug) {
-                nic.print_all_cells();
-            }
+            log::debug!(
+                "node {} memory cells:\n{}",
+                self.node_id,
+                nic.dump().join("\n")
+            );
 
             // Free the memory cell of the predecessor.
             let memory_cell = MemoryCellId {
@@ -397,7 +427,7 @@ impl Node {
         _now: u64,
         data: EsRequestData,
     ) -> (Vec<Event>, Vec<Sample>) {
-        assert_eq!(self.node_id, data.next_hop);
+        assert_eq!(self.node_id, data.target);
         assert!(data.path.len() >= 2);
 
         let mut events = vec![];
@@ -424,7 +454,7 @@ impl Node {
                 src_node_id,
             ));
             let memory_cell = Some(MemoryCellId {
-                neighbor_node_id: data.prev_hop,
+                neighbor_node_id: predecessor,
                 role: super::nic::Role::Slave,
                 local_pair_id: data.local_pair_id,
             });
@@ -462,15 +492,15 @@ impl Node {
                     );
                 });
 
-            let succ_memory_cell =
-                if let EsRequestStatus::WaitingForResponse(memory_cell) = &es_request.status {
-                    memory_cell
-                } else {
-                    panic!(
-                        "wrong EsRequest status at node {} for EPR {}: {:?}",
-                        self.node_id, data.epr, es_request
-                    );
-                };
+            let succ_memory_cell = if let EsRequestStatus::Waiting(memory_cell) = &es_request.status
+            {
+                memory_cell
+            } else {
+                panic!(
+                    "wrong EsRequest status at node {} for EPR {}: {:?}",
+                    self.node_id, data.epr, es_request
+                );
+            };
 
             if self.rng.gen_bool(self.properties.swapping_success_prob) {
                 // Successful Bell-state measurement.
@@ -480,8 +510,7 @@ impl Node {
                 events.push(Event::new_transfer(
                     EventType::NodeEvent(NodeEventData::EsRequest(EsRequestData {
                         epr: data.epr,
-                        prev_hop: self.node_id,
-                        next_hop: successor,
+                        target: successor,
                         path: data.path.clone(),
                         local_pair_id: succ_memory_cell.local_pair_id,
                     })),
@@ -524,7 +553,12 @@ impl Node {
                     role: crate::nic::Role::Slave,
                     local_pair_id: pred_local_pair_id,
                 };
-                self.local_free(&pred_memory_cell);
+                if !self.local_free_by_memory_cell(&pred_memory_cell) {
+                    panic!(
+                        "trying at node {} to free an unused memory cell {:?}",
+                        self.node_id, pred_memory_cell
+                    );
+                }
 
                 let pred_memory_cell_reverse = MemoryCellId {
                     neighbor_node_id: self.node_id,
@@ -553,7 +587,22 @@ impl Node {
     ) -> (Vec<Event>, Vec<Sample>) {
         assert!(data.target == self.node_id);
 
-        self.local_free(&data.memory_cell);
+        if data.memory_cell.role == crate::nic::Role::Master {
+            if !self.pop_es_request_by_memory_cell(&data.memory_cell) {
+                panic!(
+                    "could not find at node {} any pending when freeing memory cell {:?}",
+                    self.node_id, data.memory_cell
+                )
+            }
+        }
+
+        if !self.local_free_by_memory_cell(&data.memory_cell) {
+            println!("{self}");
+            panic!(
+                "trying at node {} to free an unused memory cell {:?}",
+                self.node_id, data.memory_cell
+            );
+        }
 
         (vec![], vec![])
     }
@@ -571,9 +620,9 @@ impl Node {
         assert_eq!(self.node_id, epr.source_node_id);
 
         let app_request = self.pop_app_request(&epr);
-        let (_peer, es_request) = self.pop_es_request(&epr);
+        let (_peer, es_request) = self.pop_es_request_by_epr(&epr);
 
-        if let EsRequestStatus::WaitingForResponse(memory_cell) = es_request.status {
+        if let EsRequestStatus::Waiting(memory_cell) = es_request.status {
             let events = vec![Event::new(
                 0.0_f64,
                 EventType::AppEvent(AppEventData::EprResponse(EprResponseData {
@@ -675,46 +724,24 @@ impl Node {
     }
 
     /// Free a local memory cell. Return true if consumed.
-    fn local_free(&mut self, memory_cell: &MemoryCellId) -> bool {
-        let es_requests = &mut self
-            .pending_es_requests
+    fn local_free_by_memory_cell(&mut self, memory_cell: &MemoryCellId) -> bool {
+        if let Some(nic) = self
+            .nics(&memory_cell.role)
             .get_mut(&memory_cell.neighbor_node_id)
-            .unwrap_or_else(|| {
-                panic!(
-                    "could not at find node {} any memory cell with neighbor {}",
-                    self.node_id, memory_cell.neighbor_node_id
-                )
-            });
-        let pos = es_requests
-            .iter()
-            .position(|x| {
-                if let EsRequestStatus::WaitingForResponse(cur_memory_cell) = &x.status {
-                    *cur_memory_cell == *memory_cell
-                } else {
-                    false
-                }
-            })
-            .unwrap_or_else(|| {
-                panic!(
-                    "could not at find node {} memory cell {:?}",
-                    self.node_id, memory_cell
-                )
-            });
-        es_requests.remove(pos);
-
-        if let Some(nic) = self.nics_master.get_mut(&memory_cell.neighbor_node_id) {
+        {
             nic.consume(memory_cell.local_pair_id).is_some()
         } else {
             false
         }
     }
 
-    /// Free a local memory cell by EPR. Return memory cell if consumed.
+    /// Free a local memory cell by EPR and remove any pending associated
+    /// request. Return memory cell if consumed.
     fn local_free_by_epr(&mut self, epr: &EprFiveTuple) -> Option<MemoryCellId> {
         for (peer, es_requests) in &mut self.pending_es_requests {
-            if let Some(pos) = self.pending_app_requests.iter().position(|x| x.epr == *epr) {
+            if let Some(pos) = es_requests.iter().position(|x| x.epr == *epr) {
                 let es_request = es_requests.remove(pos);
-                if let EsRequestStatus::WaitingForResponse(memory_cell) = &es_request.status {
+                if let EsRequestStatus::Waiting(memory_cell) = &es_request.status {
                     assert_eq!(*peer, memory_cell.neighbor_node_id);
                     if let Some(nic) = self.nics_master.get_mut(&memory_cell.neighbor_node_id) {
                         if nic.consume(memory_cell.local_pair_id).is_some() {
@@ -739,8 +766,8 @@ impl Node {
         }
     }
 
-    /// Remove an ES request from the queue.
-    fn pop_es_request(&mut self, epr: &EprFiveTuple) -> (u32, EsRequest) {
+    /// Remove an ES request from the queue with matching EPR.
+    fn pop_es_request_by_epr(&mut self, epr: &EprFiveTuple) -> (u32, EsRequest) {
         for (peer, es_requests) in &mut self.pending_es_requests {
             if let Some(epr_ndx) = es_requests.iter().position(|x| x.epr == *epr) {
                 return (*peer, es_requests.swap_remove(epr_ndx));
@@ -750,6 +777,28 @@ impl Node {
             "could not find queued ES request at node {} for EPR {}",
             self.node_id, epr
         );
+    }
+
+    /// Remove an ES request in status WaitingForResponse from the queue
+    /// with matching the memory cell. Return true if found.
+    fn pop_es_request_by_memory_cell(&mut self, memory_cell: &MemoryCellId) -> bool {
+        if let Some(es_requests) = &mut self
+            .pending_es_requests
+            .get_mut(&memory_cell.neighbor_node_id)
+        {
+            if let Some(pos) = es_requests.iter().position(|x| {
+                if let EsRequestStatus::Waiting(cur_memory_cell) = &x.status {
+                    *cur_memory_cell == *memory_cell
+                } else {
+                    false
+                }
+            }) {
+                es_requests.remove(pos);
+                return true;
+            }
+        }
+
+        false
     }
 
     /// Schedule requests pending for a given peer, if possible.
@@ -774,7 +823,7 @@ impl Node {
                     log::debug!("{log_status}");
                 }
                 for request in requests.iter_mut() {
-                    if matches!(request.status, EsRequestStatus::WaitingForResponse(_)) {
+                    if matches!(request.status, EsRequestStatus::Waiting(_)) {
                         continue;
                     }
 
@@ -786,8 +835,7 @@ impl Node {
                                 events.push(Event::new_transfer(
                                     EventType::NodeEvent(NodeEventData::EsRequest(EsRequestData {
                                         epr: request.epr.clone(),
-                                        prev_hop: self.node_id,
-                                        next_hop: peer,
+                                        target: peer,
                                         path: request.path.clone(),
                                         local_pair_id,
                                     })),
@@ -795,24 +843,23 @@ impl Node {
                                     peer,
                                 ));
                             }
-                            EsRequestStatus::QueuedIntermediate(prev_hop, next_hop) => {
+                            EsRequestStatus::QueuedIntermediate => {
                                 events.push(Event::new(
                                     self.properties.swapping_duration,
                                     EventType::NodeEvent(NodeEventData::EsLocalComplete(
                                         EsRequestData {
                                             epr: request.epr.clone(),
-                                            prev_hop,
-                                            next_hop,
+                                            target: self.node_id,
                                             path: request.path.clone(),
                                             local_pair_id,
                                         },
                                     )),
                                 ));
                             }
-                            EsRequestStatus::WaitingForResponse(_) => {}
+                            EsRequestStatus::Waiting(_) => {}
                         }
 
-                        request.status = EsRequestStatus::WaitingForResponse(MemoryCellId {
+                        request.status = EsRequestStatus::Waiting(MemoryCellId {
                             neighbor_node_id: peer,
                             role: crate::nic::Role::Master,
                             local_pair_id,

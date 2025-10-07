@@ -263,15 +263,20 @@ impl Network {
         )
     }
 
-    /// Consume the half EPR and compute its fidelity.
+    /// Consume the half EPR pair and compute its fidelity.
     fn handle_epr_consume(&mut self, now: u64, data: EprConsumeData) -> (Vec<Event>, Vec<Sample>) {
         assert!(data.consume_node_id <= self.nodes.len() as u32);
 
-        let fidelity = if let Some(cell) = self.nodes[data.consume_node_id as usize].consume(
-            data.memory_cell_id.neighbor_node_id,
-            &data.memory_cell_id.role,
-            data.memory_cell_id.local_pair_id,
-        ) {
+        // Consume the local EPR pair.
+        let (memory_cell_data, events, mut samples) = self.nodes[data.consume_node_id as usize]
+            .consume(
+                data.memory_cell_id.neighbor_node_id,
+                &data.memory_cell_id.role,
+                data.memory_cell_id.local_pair_id,
+            );
+
+        // Compute the fidelity.
+        let fidelity = if let Some(cell) = memory_cell_data {
             if let Some(weight) = self
                 .physical_topology
                 .graph()
@@ -297,17 +302,16 @@ impl Network {
             panic!("no EPR found at {data:?}");
         };
 
-        (
-            vec![],
-            vec![Sample::Series(
-                "fidelity".to_string(),
-                vec![
-                    data.req_app_node_id.to_string(),
-                    data.req_app_port.to_string(),
-                ],
-                fidelity,
-            )],
-        )
+        samples.push(Sample::Series(
+            "fidelity".to_string(),
+            vec![
+                data.req_app_node_id.to_string(),
+                data.req_app_port.to_string(),
+            ],
+            fidelity,
+        ));
+
+        (events, samples)
     }
 }
 
