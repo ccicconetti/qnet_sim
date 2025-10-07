@@ -6,10 +6,16 @@ use crate::output::Sample;
 use rand::{Rng, SeedableRng};
 
 #[derive(Debug, Clone)]
+struct EsRequestStatusWaitingData {
+    pred_memory_cell: Option<MemoryCellId>,
+    succ_memory_cell: MemoryCellId,
+}
+
+#[derive(Debug, Clone)]
 enum EsRequestStatus {
     QueuedSource,
-    QueuedIntermediate,
-    Waiting(MemoryCellId),
+    QueuedIntermediate(MemoryCellId), // memory cell of the predecessor
+    Waiting(EsRequestStatusWaitingData),
 }
 
 #[derive(Debug, Clone)]
@@ -360,12 +366,17 @@ impl Node {
             } else {
                 // This is an intermediate node, which has to perform ES.
                 let successor = self.successor(&data.path);
+                let pred_memory_cell = MemoryCellId {
+                    neighbor_node_id: predecessor,
+                    role: crate::nic::Role::Slave,
+                    local_pair_id: data.local_pair_id,
+                };
                 self.pending_es_requests
                     .entry(successor)
                     .or_default()
                     .push(EsRequest {
                         epr: data.epr,
-                        status: EsRequestStatus::QueuedIntermediate,
+                        status: EsRequestStatus::QueuedIntermediate(pred_memory_cell),
                         path: data.path,
                     });
 
@@ -382,25 +393,32 @@ impl Node {
                 nic.dump().join("\n")
             );
 
-            // Free the memory cell of the predecessor.
-            let memory_cell = MemoryCellId {
-                neighbor_node_id: self.node_id,
-                role: crate::nic::Role::Master,
-                local_pair_id: data.local_pair_id,
-            };
-            events.push(Event::new_transfer(
-                EventType::NodeEvent(NodeEventData::EsFreeMemoryCell(EsFreeMemoryCellData {
-                    memory_cell,
-                    target: predecessor,
-                })),
-                self.node_id,
-                predecessor,
-            ));
+            // Free the memory cell of the predecessor, unless the predecessor
+            // is the source node, in which case clean up will be done in
+            // response to the EsRemoteFailed message.
+            if predecessor != source {
+                let memory_cell = MemoryCellId {
+                    neighbor_node_id: self.node_id,
+                    role: crate::nic::Role::Master,
+                    local_pair_id: data.local_pair_id,
+                };
+                events.push(Event::new_transfer(
+                    EventType::NodeEvent(NodeEventData::EsFreeMemoryCell(EsFreeMemoryCellData {
+                        memory_cell,
+                        target: predecessor,
+                    })),
+                    self.node_id,
+                    predecessor,
+                ));
+            }
 
             // Notify the source node that the end-to-end entanglement failed.
             let epr = data.epr.clone();
             events.push(Event::new_transfer(
-                EventType::NodeEvent(NodeEventData::EsRemoteFailed(epr)),
+                EventType::NodeEvent(NodeEventData::EsRemoteFailed(EsRemoteFailedData {
+                    epr,
+                    sender: self.node_id,
+                })),
                 self.node_id,
                 source,
             ));
@@ -472,8 +490,6 @@ impl Node {
             assert!(pos < data.path.len() - 1);
             let successor = data.path[pos + 1];
 
-            let pred_local_pair_id = data.local_pair_id;
-
             let es_request = self
                 .pending_es_requests
                 .get(&successor)
@@ -492,14 +508,36 @@ impl Node {
                     );
                 });
 
-            let succ_memory_cell = if let EsRequestStatus::Waiting(memory_cell) = &es_request.status
-            {
-                memory_cell
-            } else {
+            // Retrieve the precedessor/success memory cell identifiers
+            // from the pending request.
+            let status_waiting_data =
+                if let EsRequestStatus::Waiting(status_waiting_data) = &es_request.status {
+                    status_waiting_data
+                } else {
+                    panic!(
+                        "wrong EsRequest status at node {} for EPR {}: {:?}",
+                        self.node_id, data.epr, es_request
+                    );
+                }
+                .clone();
+            let pred_memory_cell = status_waiting_data.pred_memory_cell.unwrap_or_else(|| {
                 panic!(
-                    "wrong EsRequest status at node {} for EPR {}: {:?}",
-                    self.node_id, data.epr, es_request
+                    "could not find at node {} memory cell for EPR {}",
+                    self.node_id, epr
                 );
+            });
+            assert_eq!(pred_memory_cell.neighbor_node_id, predecessor);
+            assert_eq!(pred_memory_cell.role, crate::nic::Role::Slave);
+
+            let succ_memory_cell = status_waiting_data.succ_memory_cell;
+            assert_eq!(succ_memory_cell.role, crate::nic::Role::Master);
+            assert_eq!(succ_memory_cell.neighbor_node_id, successor);
+
+            // Prepare memory cell to be sent to the predecessor.
+            let pred_memory_cell_reverse = MemoryCellId {
+                neighbor_node_id: self.node_id,
+                role: crate::nic::Role::Master,
+                local_pair_id: pred_memory_cell.local_pair_id,
             };
 
             if self.rng.gen_bool(self.properties.swapping_success_prob) {
@@ -517,11 +555,33 @@ impl Node {
                     self.node_id,
                     successor,
                 ));
+
+                // If this is not the second hop in the chain, free the consumed
+                // qubit at this node and ask the predecessor to do the same.
+                if pos > 1 {
+                    if !self.local_free_by_memory_cell(&pred_memory_cell) {
+                        panic!(
+                            "trying at node {} to free an unused memory cell {:?}",
+                            self.node_id, pred_memory_cell
+                        );
+                    }
+
+                    events.push(Event::new_transfer(
+                        EventType::NodeEvent(NodeEventData::EsFreeMemoryCell(
+                            EsFreeMemoryCellData {
+                                memory_cell: pred_memory_cell_reverse,
+                                target: predecessor,
+                            },
+                        )),
+                        self.node_id,
+                        predecessor,
+                    ));
+                }
             } else {
                 // Failed Bell-state measurement.
                 samples.push(Sample::ScalarAvg("bsm_prob".to_string(), 0.0));
 
-                // Ask the successor to free the memory cell consumed.
+                // Free the memory cell of the successor.
                 assert!(matches!(succ_memory_cell.role, crate::nic::Role::Master));
                 let succ_memory_cell_reverse = MemoryCellId {
                     neighbor_node_id: self.node_id,
@@ -537,22 +597,7 @@ impl Node {
                     successor,
                 ));
 
-                // Notify the source that the remote entanglement has failed.
-                events.push(Event::new_transfer(
-                    EventType::NodeEvent(NodeEventData::EsRemoteFailed(data.epr)),
-                    self.node_id,
-                    source,
-                ));
-            }
-
-            // If this is not the second hop in the chain, free the consumed
-            // qubit at this node and ask the predecessor to do the same.
-            if pos > 1 {
-                let pred_memory_cell = MemoryCellId {
-                    neighbor_node_id: predecessor,
-                    role: crate::nic::Role::Slave,
-                    local_pair_id: pred_local_pair_id,
-                };
+                // Free the local memory cell associated with the precedessor.
                 if !self.local_free_by_memory_cell(&pred_memory_cell) {
                     panic!(
                         "trying at node {} to free an unused memory cell {:?}",
@@ -560,18 +605,30 @@ impl Node {
                     );
                 }
 
-                let pred_memory_cell_reverse = MemoryCellId {
-                    neighbor_node_id: self.node_id,
-                    role: crate::nic::Role::Master,
-                    local_pair_id: pred_local_pair_id,
-                };
+                // Ask the predecessor to free its memory cell, unless the
+                // precedessor is the source, in which case clean up will ne
+                // performed by the EsRemoteFailed message.
+                if predecessor != source {
+                    events.push(Event::new_transfer(
+                        EventType::NodeEvent(NodeEventData::EsFreeMemoryCell(
+                            EsFreeMemoryCellData {
+                                memory_cell: pred_memory_cell_reverse,
+                                target: predecessor,
+                            },
+                        )),
+                        self.node_id,
+                        predecessor,
+                    ));
+                }
+
+                // Notify the source that the remote entanglement has failed.
                 events.push(Event::new_transfer(
-                    EventType::NodeEvent(NodeEventData::EsFreeMemoryCell(EsFreeMemoryCellData {
-                        memory_cell: pred_memory_cell_reverse,
-                        target: predecessor,
+                    EventType::NodeEvent(NodeEventData::EsRemoteFailed(EsRemoteFailedData {
+                        epr: data.epr,
+                        sender: self.node_id,
                     })),
                     self.node_id,
-                    predecessor,
+                    source,
                 ));
             }
         }
@@ -590,17 +647,18 @@ impl Node {
         if data.memory_cell.role == crate::nic::Role::Master {
             if !self.pop_es_request_by_memory_cell(&data.memory_cell) {
                 panic!(
-                    "could not find at node {} any pending when freeing memory cell {:?}",
+                    "could not find at node {} any pending request when freeing memory cell {:?}",
                     self.node_id, data.memory_cell
                 )
             }
         }
 
         if !self.local_free_by_memory_cell(&data.memory_cell) {
-            println!("{self}");
-            panic!(
-                "trying at node {} to free an unused memory cell {:?}",
-                self.node_id, data.memory_cell
+            log::debug!(
+                "trying at node {} to free an unused memory cell {:?}:\n{}",
+                self.node_id,
+                data.memory_cell,
+                self
             );
         }
 
@@ -622,13 +680,19 @@ impl Node {
         let app_request = self.pop_app_request(&epr);
         let (_peer, es_request) = self.pop_es_request_by_epr(&epr);
 
-        if let EsRequestStatus::Waiting(memory_cell) = es_request.status {
+        if let EsRequestStatus::Waiting(waiting_data) = es_request.status {
+            assert!(
+                waiting_data.pred_memory_cell.is_none(),
+                "incorrect pending request at node {}: {:?}",
+                self.node_id,
+                waiting_data
+            );
             let events = vec![Event::new(
                 0.0_f64,
                 EventType::AppEvent(AppEventData::EprResponse(EprResponseData {
                     epr,
                     is_source: true,
-                    memory_cell: Some(memory_cell),
+                    memory_cell: Some(waiting_data.succ_memory_cell),
                 })),
             )];
             (
@@ -655,8 +719,9 @@ impl Node {
     fn handle_es_remote_failed(
         &mut self,
         now: u64,
-        epr: EprFiveTuple,
+        data: EsRemoteFailedData,
     ) -> (Vec<Event>, Vec<Sample>) {
+        let epr = data.epr;
         assert_eq!(self.node_id, epr.source_node_id);
 
         // Free the local memory cell (master).
@@ -668,21 +733,25 @@ impl Node {
         });
         assert!(matches!(memory_cell.role, crate::nic::Role::Master));
 
-        // Send request to free the peer memory cell (slave).
-        let memory_cell_reverse = MemoryCellId {
-            neighbor_node_id: self.node_id,
-            role: crate::nic::Role::Slave,
-            local_pair_id: memory_cell.local_pair_id,
-        };
-        let target = memory_cell.neighbor_node_id;
-        let mut events = vec![Event::new_transfer(
-            EventType::NodeEvent(NodeEventData::EsFreeMemoryCell(EsFreeMemoryCellData {
-                memory_cell: memory_cell_reverse,
+        // Send request to free the peer memory cell (slave), unless the
+        // EsRemoteFailed message came from that node.
+        let mut events = vec![];
+        if data.sender != memory_cell.neighbor_node_id {
+            let memory_cell_reverse = MemoryCellId {
+                neighbor_node_id: self.node_id,
+                role: crate::nic::Role::Slave,
+                local_pair_id: memory_cell.local_pair_id,
+            };
+            let target = memory_cell.neighbor_node_id;
+            events.push(Event::new_transfer(
+                EventType::NodeEvent(NodeEventData::EsFreeMemoryCell(EsFreeMemoryCellData {
+                    memory_cell: memory_cell_reverse,
+                    target,
+                })),
+                self.node_id,
                 target,
-            })),
-            self.node_id,
-            target,
-        )];
+            ));
+        }
 
         // Reschedule the failed app request.
         let app_request = self.pop_app_request(&epr);
@@ -741,7 +810,14 @@ impl Node {
         for (peer, es_requests) in &mut self.pending_es_requests {
             if let Some(pos) = es_requests.iter().position(|x| x.epr == *epr) {
                 let es_request = es_requests.remove(pos);
-                if let EsRequestStatus::Waiting(memory_cell) = &es_request.status {
+                if let EsRequestStatus::Waiting(waiting_data) = &es_request.status {
+                    assert!(
+                        waiting_data.pred_memory_cell.is_none(),
+                        "incorrect pending request at node {}: {:?}",
+                        self.node_id,
+                        waiting_data
+                    );
+                    let memory_cell = &waiting_data.succ_memory_cell;
                     assert_eq!(*peer, memory_cell.neighbor_node_id);
                     if let Some(nic) = self.nics_master.get_mut(&memory_cell.neighbor_node_id) {
                         if nic.consume(memory_cell.local_pair_id).is_some() {
@@ -787,8 +863,8 @@ impl Node {
             .get_mut(&memory_cell.neighbor_node_id)
         {
             if let Some(pos) = es_requests.iter().position(|x| {
-                if let EsRequestStatus::Waiting(cur_memory_cell) = &x.status {
-                    *cur_memory_cell == *memory_cell
+                if let EsRequestStatus::Waiting(waiting_data) = &x.status {
+                    waiting_data.succ_memory_cell == *memory_cell
                 } else {
                     false
                 }
@@ -830,7 +906,7 @@ impl Node {
                     if let Some(local_pair_id) = nic.newest_valid() {
                         nic.used(local_pair_id);
 
-                        match request.status {
+                        let pred_memory_cell = match &request.status {
                             EsRequestStatus::QueuedSource => {
                                 events.push(Event::new_transfer(
                                     EventType::NodeEvent(NodeEventData::EsRequest(EsRequestData {
@@ -842,8 +918,9 @@ impl Node {
                                     self.node_id,
                                     peer,
                                 ));
+                                None
                             }
-                            EsRequestStatus::QueuedIntermediate => {
+                            EsRequestStatus::QueuedIntermediate(pred_local_pair_id) => {
                                 events.push(Event::new(
                                     self.properties.swapping_duration,
                                     EventType::NodeEvent(NodeEventData::EsLocalComplete(
@@ -855,15 +932,22 @@ impl Node {
                                         },
                                     )),
                                 ));
+                                Some(pred_local_pair_id.clone())
                             }
-                            EsRequestStatus::Waiting(_) => {}
-                        }
+                            EsRequestStatus::Waiting(_) => {
+                                panic!("unreachable statement");
+                            }
+                        };
 
-                        request.status = EsRequestStatus::Waiting(MemoryCellId {
-                            neighbor_node_id: peer,
-                            role: crate::nic::Role::Master,
-                            local_pair_id,
-                        });
+                        let waiting_data = EsRequestStatusWaitingData {
+                            pred_memory_cell,
+                            succ_memory_cell: MemoryCellId {
+                                neighbor_node_id: peer,
+                                role: crate::nic::Role::Master,
+                                local_pair_id,
+                            },
+                        };
+                        request.status = EsRequestStatus::Waiting(waiting_data);
                     } else {
                         break;
                     }

@@ -129,7 +129,7 @@ mod tests {
 
     #[test]
     fn test_sim_single_logical_hop() -> anyhow::Result<()> {
-        // env_logger::init();
+        env_logger::init();
 
         let mut sim = None;
         for seed in 0..100 {

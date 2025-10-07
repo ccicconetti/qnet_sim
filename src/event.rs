@@ -127,6 +127,15 @@ pub struct EsFreeMemoryCellData {
     pub target: u32,
 }
 
+/// Remote entanglement failure request body.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct EsRemoteFailedData {
+    /// EPR identifier.
+    pub epr: EprFiveTuple,
+    /// Node that sent the message.
+    pub sender: u32,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum NodeEventData {
     /// New EPR request requested by an app, identified by the five tuple
@@ -148,7 +157,7 @@ pub enum NodeEventData {
     /// Created by the node where end-to-end EPR creation fails.
     /// Consumed by the nodes along the path from the source to this node
     /// that have pending resources to be freed.
-    EsRemoteFailed(EprFiveTuple),
+    EsRemoteFailed(EsRemoteFailedData),
     /// Entanglement swapping operation completed successfully.
     /// Created by the destination node. Consumed by the source node.
     EsRemoteComplete(EprFiveTuple),
@@ -157,9 +166,10 @@ pub enum NodeEventData {
 impl NodeEventData {
     pub fn node_id(&self) -> u32 {
         match self {
-            NodeEventData::EprRequestApp(data)
-            | NodeEventData::EsRemoteComplete(data)
-            | NodeEventData::EsRemoteFailed(data) => data.source_node_id,
+            NodeEventData::EprRequestApp(data) | NodeEventData::EsRemoteComplete(data) => {
+                data.source_node_id
+            }
+            NodeEventData::EsRemoteFailed(data) => data.epr.source_node_id,
             NodeEventData::EsFreeMemoryCell(data) => data.target,
             NodeEventData::EsRequest(data) | NodeEventData::EsLocalComplete(data) => data.target,
         }
