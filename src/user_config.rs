@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: © 2025 Claudio Cicconetti <c.cicconetti@iit.cnr.it>
 // SPDX-License-Identifier: MIT
 
-fn default_sat_weight() -> crate::physical_topology::NodeWeight {
+pub fn default_sat_weight() -> crate::physical_topology::NodeWeight {
     crate::physical_topology::NodeWeight {
         node_type: crate::physical_topology::NodeType::SAT,
         memory_qubits: 20,
@@ -15,7 +15,7 @@ fn default_sat_weight() -> crate::physical_topology::NodeWeight {
     }
 }
 
-fn default_ogs_weight() -> crate::physical_topology::NodeWeight {
+pub fn default_ogs_weight() -> crate::physical_topology::NodeWeight {
     crate::physical_topology::NodeWeight {
         node_type: crate::physical_topology::NodeType::OGS,
         memory_qubits: 100,
@@ -166,6 +166,7 @@ impl crate::utils::CsvFriend for LogicalTopology {
 pub enum SourceDestPairs {
     Random(usize),
     AllToAll,
+    List(Vec<(u32, u32)>),
 }
 
 impl Default for SourceDestPairs {

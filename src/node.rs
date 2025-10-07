@@ -753,7 +753,18 @@ impl Node {
     }
 
     /// Schedule requests pending for a given peer, if possible.
+    ///
+    /// For all requests in a queued status perform the following procedure.
+    ///  
     /// Mark the memory cell as used, so that it cannot be overwritten.
+    ///
+    /// Generate a new event depending on the request:
+    /// - If we are the source node, then an EsRequest is sent to
+    ///   the next hop.
+    /// - Otherwise, we schedule a local EsLocalComplete event that simulates
+    ///   the execution of the BSM operation.
+    ///
+    /// Finally, the request status is changed to WaitingForResponse.
     fn schedule_pending_es_requests(&mut self, peer: u32) -> (Vec<Event>, Vec<Sample>) {
         let log_status = format!("{self}");
         let mut events = vec![];
@@ -769,11 +780,7 @@ impl Node {
 
                     if let Some(local_pair_id) = nic.newest_valid() {
                         nic.used(local_pair_id);
-                        request.status = EsRequestStatus::WaitingForResponse(MemoryCellId {
-                            neighbor_node_id: peer,
-                            role: crate::nic::Role::Master,
-                            local_pair_id,
-                        });
+
                         match request.status {
                             EsRequestStatus::QueuedSource => {
                                 events.push(Event::new_transfer(
@@ -804,6 +811,12 @@ impl Node {
                             }
                             EsRequestStatus::WaitingForResponse(_) => {}
                         }
+
+                        request.status = EsRequestStatus::WaitingForResponse(MemoryCellId {
+                            neighbor_node_id: peer,
+                            role: crate::nic::Role::Master,
+                            local_pair_id,
+                        });
                     } else {
                         break;
                     }

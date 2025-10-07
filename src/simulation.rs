@@ -130,6 +130,11 @@ impl Simulation {
         })
     }
 
+    /// Return the path on the logical topology from `src` to `dst`.
+    pub fn logical_path(&self, src: u32, dst: u32) -> Vec<u32> {
+        self.network.logical_topology.path(src, dst)
+    }
+
     /// Add all the events to the event queue and save metrics.
     fn update(&mut self, events: Vec<Event>, samples: Vec<Sample>) {
         for event in events {
@@ -303,6 +308,11 @@ fn source_destination_pairs(
                     }
                     source_dest_pairs.push((*this_node_id, *peer_node_id));
                 }
+            }
+        }
+        crate::user_config::SourceDestPairs::List(pairs) => {
+            for (this_node_id, peer_node_id) in pairs {
+                source_dest_pairs.push((*this_node_id, *peer_node_id));
             }
         }
     }

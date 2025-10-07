@@ -168,6 +168,23 @@ impl OutputScalar {
             elem.finish(now);
         }
     }
+
+    pub fn values(&self) -> std::collections::HashMap<String, f64> {
+        let mut ret = std::collections::HashMap::new();
+        for (name, val) in &self.one_time {
+            ret.insert(name.clone(), *val);
+        }
+        for (name, val) in &self.avg {
+            ret.insert(name.clone(), val.avg());
+        }
+        for (name, val) in &self.time_avg {
+            ret.insert(name.clone(), val.avg());
+        }
+        for (name, val) in &self.count {
+            ret.insert(name.clone(), val.tot());
+        }
+        ret
+    }
 }
 
 impl CsvFriend for OutputScalar {
