@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use petgraph::visit::EdgeRef;
+use rand::Rng;
 use rand::SeedableRng;
 use rand_distr::Distribution;
 
@@ -53,6 +54,8 @@ pub struct Network {
     pub physical_topology: crate::physical_topology::PhysicalTopology,
     /// The logical topology.
     pub logical_topology: std::rc::Rc<crate::logical_topology::LogicalTopology>,
+    /// Pseudo-random number generator.
+    rng: rand::rngs::StdRng,
 }
 
 impl Network {
@@ -64,6 +67,7 @@ impl Network {
     ) -> Self {
         // Create the nodes.
         let mut nodes = vec![];
+        let mut next_seed = init_seed;
 
         for node_id in 0..logical_topology.graph().node_count() {
             let node_weight = physical_topology
@@ -78,14 +82,15 @@ impl Network {
                     correction_duration: node_weight.correction_duration,
                 },
                 logical_topology.clone(),
-                init_seed,
+                next_seed,
             ));
         }
+        next_seed += 1;
 
         // Add the NICs and EPR generators.
         let mut epr_generators: std::collections::HashMap<u32, Vec<EprGenerator>> =
             std::collections::HashMap::new();
-        for (cnt, edge) in logical_topology.graph().edge_references().enumerate() {
+        for edge in logical_topology.graph().edge_references() {
             let master_node_id = edge.source().index();
             let slave_node_id = edge.target().index();
             let num_qubits = edge.weight().memory_qubits;
@@ -112,8 +117,9 @@ impl Network {
                     slave_node_id,
                     rv: rand_distr::Exp::new(edge.weight().capacity)
                         .expect("could not create an expo rv"),
-                    rng: rand::rngs::StdRng::seed_from_u64(init_seed + cnt as u64),
+                    rng: rand::rngs::StdRng::seed_from_u64(next_seed as u64),
                 });
+            next_seed += 1;
         }
 
         let epr_register = crate::epr_register::EprRegister::default();
@@ -123,6 +129,7 @@ impl Network {
             epr_register,
             physical_topology,
             logical_topology,
+            rng: rand::rngs::StdRng::seed_from_u64(next_seed as u64),
         }
     }
 
@@ -140,7 +147,10 @@ impl Network {
                     .distance(transfer.src_node_id, transfer.dst_node_id)
                     .expect("cannot compute distance between two nodes");
 
-                let latency = crate::utils::distance_to_latency(distance);
+                // Compute deterministic latency based on physical distance.
+                let mut latency = crate::utils::distance_to_latency(distance);
+                // Add a random 1% extra latency.
+                latency += self.rng.gen_range(0.0..latency / 100.0);
                 event.reset(latency);
                 return (vec![event], vec![]);
             }

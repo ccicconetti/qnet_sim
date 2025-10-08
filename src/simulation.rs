@@ -268,6 +268,10 @@ impl Simulation {
         self.single.one_time("num_events", num_events as f64);
         self.single
             .one_time("execution_time", real_now.elapsed().as_secs_f64());
+        self.single.one_time(
+            "epr_register_final_len",
+            self.network.epr_register.len() as f64,
+        );
 
         // return the simulation output
         let single = std::mem::take(&mut self.single);

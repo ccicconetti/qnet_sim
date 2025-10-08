@@ -101,6 +101,11 @@ pub struct EprRegister {
 }
 
 impl EprRegister {
+    /// Return the number of currently active (non-measured) EPR pairs.
+    pub fn len(&self) -> usize {
+        self.epr_pairs.len()
+    }
+
     /// Create a new EPR pair with given characteristics. Return its identifier.
     pub fn new_epr_pair(&mut self, alice_id: u32, bob_id: u32, updated: u64, fidelity: f64) -> u64 {
         let epr_pair_id = self.last_epr_pair_id;
@@ -120,8 +125,6 @@ impl EprRegister {
             res.is_none(),
             "The EPR pair register contains already ID {epr_pair_id}"
         );
-
-        println!("XXX {} new pair ID {}", self.epr_pairs.len(), epr_pair_id);
 
         self.last_epr_pair_id += 1;
         epr_pair_id
@@ -225,6 +228,10 @@ impl EprRegister {
         epr_pair_id_succ: u64,
         bsm_node_id: u32,
     ) -> u64 {
+        // Find the descendants of the EPR pairs given.
+        let epr_pair_id_pred = self.find_non_squashed(epr_pair_id_pred);
+        let epr_pair_id_succ = self.find_non_squashed(epr_pair_id_succ);
+
         let pred = self.epr_pairs.get(&epr_pair_id_pred);
         let succ = self.epr_pairs.get(&epr_pair_id_succ);
 
@@ -429,6 +436,37 @@ mod tests {
         assert_eq!(5, register.epr_pairs.len());
 
         let (updated2, fidelity2) = register.consume(new_epr2, 4).unwrap();
+        assert!(register.epr_pairs.is_empty());
+
+        assert_eq!(2999, updated1);
+        assert_eq!(2999, updated2);
+
+        assert_float_eq::assert_f64_near!(0.7382222197811112, fidelity1);
+        assert_float_eq::assert_f64_near!(0.7382222197811112, fidelity2);
+    }
+
+    #[test]
+    fn test_epr_pair_register_entanglement_swapping_alt() {
+        let mut register = EprRegister::default();
+        assert!(register.epr_pairs.is_empty());
+
+        // 1 -- 2
+        //      2 -- 3
+        //           3 -- 4
+        let epr1 = register.new_epr_pair(1, 2, 999, 0.9);
+        let epr2 = register.new_epr_pair(2, 3, 999, 0.9);
+        let epr3 = register.new_epr_pair(3, 4, 999, 0.9);
+        assert_eq!(3, register.epr_pairs.len());
+
+        // Use old EPR ID.
+        register.entanglement_swapping(1999, 0.001, epr1, epr2, 2);
+        register.entanglement_swapping(2999, 0.001, epr2, epr3, 3);
+        assert_eq!(5, register.epr_pairs.len());
+
+        let (updated1, fidelity1) = register.consume(epr1, 1).unwrap();
+        assert_eq!(5, register.epr_pairs.len());
+
+        let (updated2, fidelity2) = register.consume(epr3, 4).unwrap();
         assert!(register.epr_pairs.is_empty());
 
         assert_eq!(2999, updated1);

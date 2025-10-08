@@ -246,9 +246,13 @@ impl Node {
 
     /// Handle EPR request from an application on this node.
     ///
-    /// - `now`: the current simulated time
-    /// - `received`: the time when the request was originally received
-    /// - `epr`: the EPR to be established
+    /// Select the path to reach the destination application.
+    /// Schedule the request to be issued as soon as possible.
+    ///
+    /// Parameters:
+    /// - `now`: the current simulated time.
+    /// - `received`: the time when the request was originally received.
+    /// - `epr`: the EPR to be established.
     fn handle_epr_request_app(
         &mut self,
         _now: u64,
@@ -309,8 +313,7 @@ impl Node {
     ///   an EPR pair (master) that will be needed for the BSM.
     ///
     /// If the memory cell does not contain what the master expects, then
-    /// send an EsFailure to the predecessor to free the EPR pair and a
-    /// EsRemoteFailed to the source node, so that it can try again.
+    /// send an EsRemoteFailed to the source node, so that it can try again.
     fn handle_es_request(&mut self, _now: u64, data: EsRequestData) -> (Vec<Event>, Vec<Sample>) {
         assert_eq!(self.node_id, data.target);
 
@@ -412,10 +415,9 @@ impl Node {
     /// - Notify `EprResponse` (is_source = false) to the local app.
     ///
     /// If the operation was a BSM, decide (randomly) if successful:
-    /// - Success: send `EsSuccess` to the previous hop and send a new
-    ///   `EsRequest` to the next hop.
-    /// - Failure: send `EsFailure` to the previous hop and free the local EPR
-    ///   pair (slave).
+    /// - Success: send a new `EsRequest` to the next hop.
+    /// - Failure: send `EsFreeMemoryCell` to the next hop and `EsRemoteFailure
+    ///   to the source node.
     fn handle_es_local_complete(
         &mut self,
         _now: u64,
@@ -555,6 +557,7 @@ impl Node {
     }
 
     /// Free the local memory cell corresponding to the given EPR.
+    ///
     /// Notify the network that a half EPR has been consumed.
     fn handle_es_free_memory_cell(
         &mut self,
