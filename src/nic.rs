@@ -4,7 +4,7 @@
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct MemoryCellData {
     pub created: u64,
-    pub local_pair_id: u64,
+    pub epr_pair_id: u64,
 }
 
 impl PartialOrd for MemoryCellData {
@@ -29,7 +29,7 @@ impl MemoryCell {
     pub fn new(created: u64, identifier: u64) -> Self {
         MemoryCell::Valid(MemoryCellData {
             created,
-            local_pair_id: identifier,
+            epr_pair_id: identifier,
         })
     }
 
@@ -51,11 +51,11 @@ impl MemoryCell {
         }
     }
 
-    /// Return the local pair ID, if the cell is non-empty.
-    pub fn local_pair_id(&self) -> Option<u64> {
+    /// Return the EPR pair ID, if the cell is non-empty.
+    pub fn epr_pair_id(&self) -> Option<u64> {
         match self {
             MemoryCell::Empty => None,
-            MemoryCell::Valid(data) | MemoryCell::Used(data) => Some(data.local_pair_id),
+            MemoryCell::Valid(data) | MemoryCell::Used(data) => Some(data.epr_pair_id),
         }
     }
 
@@ -210,7 +210,7 @@ impl Nic {
             self.memory_cells[index] = MemoryCell::new(now, epr_pair_id);
             (None, true)
         } else if let Some(index) = self.oldest_valid() {
-            let overwritten_id = self.memory_cells[index].local_pair_id().unwrap();
+            let overwritten_id = self.memory_cells[index].epr_pair_id().unwrap();
             self.memory_cells[index] = MemoryCell::new(now, epr_pair_id);
             (Some(overwritten_id), true)
         } else {
@@ -219,11 +219,11 @@ impl Nic {
     }
 
     /// Consume an EPR pair. Return None if there is no memory cell
-    /// associated with the local pair requested.
-    pub fn consume(&mut self, local_pair_id: u64) -> Option<MemoryCellData> {
+    /// associated with the EPR pair requested.
+    pub fn consume(&mut self, epr_pair_id: u64) -> Option<MemoryCellData> {
         for memory_cell in &mut self.memory_cells {
             if let Some(data) = memory_cell.data() {
-                if data.local_pair_id == local_pair_id {
+                if data.epr_pair_id == epr_pair_id {
                     return memory_cell.take_data();
                 }
             }
@@ -245,12 +245,12 @@ impl Nic {
         }
     }
 
-    /// Flag a memory cell as used, identified by its local pair identifier.
+    /// Flag a memory cell as used, identified by its EPR pair identifier.
     /// Return true if found and it was valid.
-    pub fn used(&mut self, local_pair_id: u64) -> bool {
+    pub fn used(&mut self, epr_pair_id: u64) -> bool {
         for memory_cell in &mut self.memory_cells {
             if let Some(data) = memory_cell.data() {
-                if data.local_pair_id == local_pair_id {
+                if data.epr_pair_id == epr_pair_id {
                     if memory_cell.is_valid() {
                         memory_cell.used();
                         return true;
@@ -273,7 +273,7 @@ impl Nic {
             .map(|(index, _)| index)
     }
 
-    /// Return the local pair ID of the newest valid memory cell, if any.
+    /// Return the EPR pair ID of the newest valid memory cell, if any.
     pub fn newest_valid(&self) -> Option<u64> {
         if let Some(memory_cell) = self
             .memory_cells
@@ -281,7 +281,7 @@ impl Nic {
             .filter(|cell| cell.is_valid())
             .max()
         {
-            memory_cell.local_pair_id()
+            memory_cell.epr_pair_id()
         } else {
             None
         }
@@ -334,7 +334,7 @@ mod tests {
             let data = nic.consume(i).unwrap();
 
             assert_eq!(i + 100, data.created);
-            assert_eq!(i, data.local_pair_id);
+            assert_eq!(i, data.epr_pair_id);
 
             assert_float_eq::assert_f64_near!(1.0 - 0.1 * (i + 1) as f64, nic.occupancy());
         }
@@ -357,8 +357,7 @@ mod tests {
                 MemoryCell::Valid(data) => {
                     assert!((data.created >= 101 && data.created <= 109) || data.created == 999);
                     assert!(
-                        (data.local_pair_id >= 1 && data.local_pair_id <= 9)
-                            || data.local_pair_id == 42
+                        (data.epr_pair_id >= 1 && data.epr_pair_id <= 9) || data.epr_pair_id == 42
                     );
                 }
                 MemoryCell::Used(_data) => panic!("invalid used cell"),
@@ -433,12 +432,12 @@ mod tests {
         // Consume all the EPR pairs.
         assert!(nic.consume(10).is_none());
         for i in 0..10_u64 {
-            let local_pair_id = if i == 7 { 2099 } else { i };
+            let epr_pair_id = if i == 7 { 2099 } else { i };
             let exp_created = if i == 7 { 1099 } else { i + 100 };
 
-            let data = nic.consume(local_pair_id).unwrap();
+            let data = nic.consume(epr_pair_id).unwrap();
             assert_eq!(exp_created, data.created);
-            assert_eq!(local_pair_id, data.local_pair_id);
+            assert_eq!(epr_pair_id, data.epr_pair_id);
 
             assert_float_eq::assert_f64_near!(1.0 - 0.1 * (i + 1) as f64, nic.occupancy());
         }

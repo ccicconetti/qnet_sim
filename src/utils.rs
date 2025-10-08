@@ -34,8 +34,22 @@ pub fn distance_to_latency(distance: f64) -> f64 {
 /// - `decay_rate`: the decaying rate, in inverse time units.
 /// - `time`: time after which the fidelity is computed.
 ///
-pub fn fidelity(f_init: f64, decay_rate: f64, time: f64) -> f64 {
+pub fn fidelity_decay(f_init: f64, decay_rate: f64, time: f64) -> f64 {
     0.25 + (f_init - 0.25) * (-decay_rate * time).exp()
+}
+
+/// Compute the fidelity of the EPR pair resulting from the entanglement
+/// swapping of two EPR pairs using (19) in 10.1103/PhysRevA.59.169.
+///
+/// Parameters:
+/// - `f1`: fidelity of one EPR pair.
+/// - `f2`: fidelity of the other EPR pair.
+/// - `p1`: noise of 1-qubit operations.
+/// - `p2`: noise of 2-qubit operations.
+/// - `eta`: measurement noise (error rate).
+pub fn fidelity_swapping(f1: f64, f2: f64, p1: f64, p2: f64, eta: f64) -> f64 {
+    0.25 * (1.0
+        + 1.0 / 9.0 * (p1 * p2 * (4.0 * eta * eta - 1.0)) * (4.0 * f1 - 1.0) * (4.0 * f2 - 1.0))
 }
 
 pub fn open_output_file(
@@ -104,7 +118,7 @@ fn struct_to_map<T: Serialize>(s: T) -> anyhow::Result<serde_json::Map<String, s
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::fidelity;
+    use crate::utils::{fidelity_decay, fidelity_swapping};
 
     use super::{to_nanoseconds, to_seconds};
 
@@ -114,10 +128,29 @@ mod tests {
     }
 
     #[test]
-    fn test_fidelity() {
-        assert_float_eq::assert_f64_near!(0.9, fidelity(0.9, 0.1, 0.0));
-        assert_float_eq::assert_f64_near!(0.4891216367614375, fidelity(0.9, 0.1, 10.0));
-        assert_float_eq::assert_f64_near!(0.41554574852714904, fidelity(0.7, 0.1, 10.0));
-        assert_float_eq::assert_f64_near!(0.25002042996839313, fidelity(0.7, 0.1, 100.0));
+    fn test_fidelity_decay() {
+        assert_float_eq::assert_f64_near!(0.9, fidelity_decay(0.9, 0.1, 0.0));
+        assert_float_eq::assert_f64_near!(0.4891216367614375, fidelity_decay(0.9, 0.1, 10.0));
+        assert_float_eq::assert_f64_near!(0.41554574852714904, fidelity_decay(0.7, 0.1, 10.0));
+        assert_float_eq::assert_f64_near!(0.25002042996839313, fidelity_decay(0.7, 0.1, 100.0));
+    }
+    #[test]
+    fn test_fidelity_swapping() {
+        assert_float_eq::assert_f64_near!(1.0, fidelity_swapping(1.0, 1.0, 1.0, 1.0, 1.0));
+        assert_float_eq::assert_f64_near!(0.9, fidelity_swapping(0.9, 1.0, 1.0, 1.0, 1.0));
+        assert_float_eq::assert_f64_near!(0.9, fidelity_swapping(1.0, 0.9, 1.0, 1.0, 1.0));
+        assert_float_eq::assert_f64_near!(0.52, fidelity_swapping(0.7, 0.7, 1.0, 1.0, 1.0));
+        assert_float_eq::assert_f64_near!(
+            0.6706222222222222,
+            fidelity_swapping(0.9, 0.9, 1.0, 1.0, 0.9)
+        );
+        assert_float_eq::assert_f64_near!(
+            0.48554844444444445,
+            fidelity_swapping(0.9, 0.9, 0.8, 0.7, 0.9)
+        );
+        assert_float_eq::assert_f64_near!(
+            0.48554844444444445,
+            fidelity_swapping(0.9, 0.9, 0.7, 0.8, 0.9)
+        );
     }
 }

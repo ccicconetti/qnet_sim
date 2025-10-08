@@ -200,9 +200,9 @@ impl Node {
         &mut self,
         peer_node_id: u32,
         role: &super::nic::Role,
-        local_pair_id: u64,
+        epr_pair_id: u64,
     ) -> Option<crate::nic::MemoryCellData> {
-        self.get_nic(peer_node_id, role).consume(local_pair_id)
+        self.get_nic(peer_node_id, role).consume(epr_pair_id)
     }
 
     /// Return the right set of NICs depending on the role.
@@ -327,7 +327,7 @@ impl Node {
             .get_mut(&predecessor)
             .expect("received an EsRequest from an unknown peer");
 
-        if nic.used(data.local_pair_id) {
+        if nic.used(data.epr_pair_id) {
             // We just locked the memory cell so that it cannot be modified.
             // We now schedule an event for when the local operations (Bell-state
             // measurement or X/Z corrections) need to be done.
@@ -364,7 +364,7 @@ impl Node {
                 let pred_memory_cell = MemoryCellId {
                     neighbor_node_id: predecessor,
                     role: crate::nic::Role::Slave,
-                    local_pair_id: data.local_pair_id,
+                    epr_pair_id: data.epr_pair_id,
                 };
                 self.pending_es_requests
                     .entry(successor)
@@ -450,7 +450,7 @@ impl Node {
             let memory_cell = Some(MemoryCellId {
                 neighbor_node_id: predecessor,
                 role: super::nic::Role::Slave,
-                local_pair_id: data.local_pair_id,
+                epr_pair_id: data.epr_pair_id,
             });
             events.push(Event::new(
                 0.0_f64,
@@ -468,7 +468,7 @@ impl Node {
             let succ_memory_cell = MemoryCellId {
                 neighbor_node_id: successor,
                 role: crate::nic::Role::Master,
-                local_pair_id: data.local_pair_id,
+                epr_pair_id: data.epr_pair_id,
             };
 
             let pred_memory_cell = self.pop_es_request_by_memory_cell(&succ_memory_cell).unwrap_or_else(|| {
@@ -491,7 +491,7 @@ impl Node {
                         epr: data.epr,
                         target: successor,
                         path: data.path.clone(),
-                        local_pair_id: succ_memory_cell.local_pair_id,
+                        epr_pair_id: succ_memory_cell.epr_pair_id,
                     })),
                     self.node_id,
                     successor,
@@ -505,7 +505,7 @@ impl Node {
                 let succ_memory_cell_reverse = MemoryCellId {
                     neighbor_node_id: self.node_id,
                     role: crate::nic::Role::Slave,
-                    local_pair_id: succ_memory_cell.local_pair_id,
+                    epr_pair_id: succ_memory_cell.epr_pair_id,
                 };
                 events.push(Event::new_transfer(
                     EventType::NodeEvent(NodeEventData::EsFreeMemoryCell(EsFreeMemoryCellData {
@@ -640,7 +640,7 @@ impl Node {
             let memory_cell_reverse = MemoryCellId {
                 neighbor_node_id: self.node_id,
                 role: crate::nic::Role::Slave,
-                local_pair_id: memory_cell.local_pair_id,
+                epr_pair_id: memory_cell.epr_pair_id,
             };
             let target = memory_cell.neighbor_node_id;
             events.push(Event::new_transfer(
@@ -698,7 +698,7 @@ impl Node {
             .nics(&memory_cell.role)
             .get_mut(&memory_cell.neighbor_node_id)
         {
-            nic.consume(memory_cell.local_pair_id).is_some()
+            nic.consume(memory_cell.epr_pair_id).is_some()
         } else {
             false
         }
@@ -720,7 +720,7 @@ impl Node {
                     let memory_cell = &waiting_data.succ_memory_cell;
                     assert_eq!(*peer, memory_cell.neighbor_node_id);
                     if let Some(nic) = self.nics_master.get_mut(&memory_cell.neighbor_node_id) {
-                        if nic.consume(memory_cell.local_pair_id).is_some() {
+                        if nic.consume(memory_cell.epr_pair_id).is_some() {
                             return Some(memory_cell.clone());
                         }
                     }
@@ -809,8 +809,8 @@ impl Node {
                         continue;
                     }
 
-                    if let Some(local_pair_id) = nic.newest_valid() {
-                        nic.used(local_pair_id);
+                    if let Some(epr_pair_id) = nic.newest_valid() {
+                        nic.used(epr_pair_id);
 
                         let pred_memory_cell = match &request.status {
                             EsRequestStatus::QueuedSource => {
@@ -819,14 +819,14 @@ impl Node {
                                         epr: request.epr.clone(),
                                         target: peer,
                                         path: request.path.clone(),
-                                        local_pair_id,
+                                        epr_pair_id,
                                     })),
                                     self.node_id,
                                     peer,
                                 ));
                                 None
                             }
-                            EsRequestStatus::QueuedIntermediate(pred_local_pair_id) => {
+                            EsRequestStatus::QueuedIntermediate(pred_epr_pair_id) => {
                                 events.push(Event::new(
                                     self.properties.swapping_duration,
                                     EventType::NodeEvent(NodeEventData::EsLocalComplete(
@@ -834,11 +834,11 @@ impl Node {
                                             epr: request.epr.clone(),
                                             target: self.node_id,
                                             path: request.path.clone(),
-                                            local_pair_id,
+                                            epr_pair_id,
                                         },
                                     )),
                                 ));
-                                Some(pred_local_pair_id.clone())
+                                Some(pred_epr_pair_id.clone())
                             }
                             EsRequestStatus::Waiting(_) => {
                                 panic!("unreachable statement");
@@ -850,7 +850,7 @@ impl Node {
                             succ_memory_cell: MemoryCellId {
                                 neighbor_node_id: peer,
                                 role: crate::nic::Role::Master,
-                                local_pair_id,
+                                epr_pair_id,
                             },
                         };
                         request.status = EsRequestStatus::Waiting(waiting_data);

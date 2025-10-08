@@ -25,8 +25,8 @@ pub struct MemoryCellId {
     pub neighbor_node_id: u32,
     /// Role in this logical link.
     pub role: crate::nic::Role,
-    /// Local pair ID.
-    pub local_pair_id: u64,
+    /// EPR pair ID.
+    pub epr_pair_id: u64,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -44,7 +44,7 @@ pub struct EprConsumeData {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct EprFreeData {
-    /// Local pair ID.
+    /// EPR pair ID.
     pub epr_pair_id: u64,
     /// Neighbor node ID.
     pub node_id: u32,
@@ -124,8 +124,8 @@ pub struct EsRequestData {
     /// one is always the node hosting the application's peer.
     /// The vector never has less than two elements.
     pub path: Vec<u32>,
-    /// Local pair identifier.
-    pub local_pair_id: u64,
+    /// EPR pair identifier.
+    pub epr_pair_id: u64,
 }
 
 /// Entanglement swapping free memory cell body.

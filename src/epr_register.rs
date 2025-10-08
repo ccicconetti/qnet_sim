@@ -1,6 +1,12 @@
 // SPDX-FileCopyrightText: © 2025 Claudio Cicconetti <c.cicconetti@iit.cnr.it>
 // SPDX-License-Identifier: MIT
 
+use std::u64;
+
+const P1: f64 = 1.0_f64;
+const P2: f64 = 1.0_f64;
+const ETA: f64 = 1.0_f64;
+
 // EPR pair.
 #[derive(Debug)]
 pub struct EprPair {
@@ -12,6 +18,10 @@ pub struct EprPair {
     updated: u64,
     /// Fidelity the EPR pair at `updated` time.
     fidelity: f64,
+    /// ID of the EPR pair that this one was squashed into.
+    squashed_by: Option<u64>,
+    /// IDs of the two EPR pairs this EPR pair squashed.
+    squashed: Option<(u64, u64)>,
 }
 
 impl EprPair {
@@ -38,6 +48,21 @@ impl EprPair {
             self.alice_id.is_none() && self.bob_id.is_none(),
         ))
     }
+
+    /// Mark this EPR pair as squashed by another one during ES.
+    pub fn squash(&mut self, squashing_id: u64) {
+        assert!(
+            self.alice_id.is_some(),
+            "ES: squashing an EPR pair already (half) consumed"
+        );
+        assert!(
+            self.bob_id.is_some(),
+            "ES: squashing an EPR pair already (half) consumed"
+        );
+        self.alice_id = None;
+        self.bob_id = None;
+        self.squashed_by = Some(squashing_id);
+    }
 }
 
 #[derive(Debug, Default)]
@@ -58,6 +83,8 @@ impl EprRegister {
                 bob_id: Some(bob_id),
                 updated,
                 fidelity,
+                squashed_by: None,
+                squashed: None,
             },
         );
         assert!(
@@ -65,15 +92,18 @@ impl EprRegister {
             "The EPR pair register contains already ID {epr_pair_id}"
         );
 
-        println!("XXX {}", self.epr_pairs.len());
+        println!("XXX {} new pair ID {}", self.epr_pairs.len(), epr_pair_id);
 
         self.last_epr_pair_id += 1;
         epr_pair_id
     }
 
-    /// Consume an EPR pair with given ID at a node.
+    /// Consume an EPR pair with given ID at a node and return its data.
+    ///
     /// Remove the EPR pair if both end-points consumed it.
     pub fn consume(&mut self, epr_pair_id: u64, node_id: u32) -> Option<(u64, f64)> {
+        let epr_pair_id = self.find_non_squashed(epr_pair_id);
+
         let epr_pair = self.epr_pairs.get_mut(&epr_pair_id);
         let ret = if let Some(epr_pair) = epr_pair {
             epr_pair.consume(node_id)
@@ -83,7 +113,14 @@ impl EprRegister {
 
         if let Some((updated, fidelity, remove)) = ret {
             if remove {
-                self.epr_pairs.remove(&epr_pair_id);
+                // Find all the EPR pairs squashed, including this one.
+                let mut to_remove = vec![];
+                self.find_all_squashed(epr_pair_id, &mut to_remove);
+
+                // Remove all the EPR pairs.
+                for id in to_remove {
+                    self.epr_pairs.remove(&id);
+                }
             }
             Some((updated, fidelity))
         } else {
@@ -91,7 +128,132 @@ impl EprRegister {
         }
     }
 
-    // Entangle XXX
+    /// Find the EPR pair non-squashed referenced by the given EPR pair or
+    /// one of its descendants.
+    fn find_non_squashed(&self, epr_pair_id: u64) -> u64 {
+        if let Some(epr_pair) = self.epr_pairs.get(&epr_pair_id) {
+            if let Some(squashed_by) = epr_pair.squashed_by {
+                self.find_non_squashed(squashed_by)
+            } else {
+                epr_pair_id
+            }
+        } else {
+            u64::MAX
+        }
+    }
+
+    /// Find all the EPR pairs squashed by `epr_pair_id`, including itself.
+    fn find_all_squashed(&mut self, epr_pair_id: u64, all_squashed_ids: &mut Vec<u64>) {
+        if let Some(epr_pair) = self.epr_pairs.get(&epr_pair_id) {
+            if let Some((squashed_alice_id, squashed_bob_id)) = epr_pair.squashed {
+                self.find_all_squashed(squashed_alice_id, all_squashed_ids);
+                self.find_all_squashed(squashed_bob_id, all_squashed_ids);
+            }
+        } else {
+            panic!("could not find EPR pair with ID {epr_pair_id} in the register")
+        }
+        all_squashed_ids.push(epr_pair_id);
+    }
+
+    /// Perform entanglement swapping between two EPR pairs as a result of a
+    /// BSM performed by repeater node `bsm_node_id`.
+    ///
+    /// Parameters:
+    /// - `updated`: the time the ES operation is performed.
+    /// - `decay_rate`: the decay rate at the repeater.
+    /// - `epr_pair_id_pred`: EPR pair ID of the node preceding the repeater.
+    /// - `epr_pair_id_succ`: EPR pair ID of the node succeding the repeater.
+    /// - `bsm_node_id`: ID of the repeater node.
+    ///
+    /// The result is that:
+    /// - A new EPR pair is created with predecessor/successor end-points and
+    ///   resulting fidelity, assuming that p1 = p2 = eta = 1.0.
+    /// - Both the predecessor and successor EPR pairs are marked as squashed
+    ///   into the new one.
+    ///
+    /// Return the new EPR pair ID.
+    pub fn entanglement_swapping(
+        &mut self,
+        updated: u64,
+        decay_rate: f64,
+        epr_pair_id_pred: u64,
+        epr_pair_id_succ: u64,
+        bsm_node_id: u32,
+    ) -> u64 {
+        let pred = self
+            .epr_pairs
+            .get(&epr_pair_id_pred)
+            .expect("ES: cannot find predecessor EPR pair");
+        let succ = self
+            .epr_pairs
+            .get(&epr_pair_id_succ)
+            .expect("ES: cannot find successor EPR pair");
+
+        let new_epr_pair_id = self.last_epr_pair_id;
+
+        // Adopt this notation:
+        //
+        // alice ----- repeater                (pred)
+        //             repeater ----- bob      (succ)
+        if let (Some(pred_alice_id), Some(pred_bob_id), Some(succ_alice_id), Some(succ_bob_id)) =
+            (pred.alice_id, pred.bob_id, succ.alice_id, succ.bob_id)
+        {
+            assert!(pred_alice_id == bsm_node_id || pred_bob_id == bsm_node_id);
+            assert!(succ_alice_id == bsm_node_id || succ_bob_id == bsm_node_id);
+            assert!(pred.updated < updated);
+            assert!(succ.updated < updated);
+
+            let alice_id = if pred_alice_id == bsm_node_id {
+                pred_bob_id
+            } else {
+                pred_alice_id
+            };
+            let bob_id = if succ_alice_id == bsm_node_id {
+                succ_bob_id
+            } else {
+                succ_alice_id
+            };
+
+            let f1 = crate::utils::fidelity_decay(
+                pred.fidelity,
+                decay_rate,
+                crate::utils::to_seconds(updated - pred.updated),
+            );
+            let f2 = crate::utils::fidelity_decay(
+                succ.fidelity,
+                decay_rate,
+                crate::utils::to_seconds(updated - succ.updated),
+            );
+            let fidelity = crate::utils::fidelity_swapping(f1, f2, P1, P2, ETA);
+
+            self.epr_pairs.insert(
+                new_epr_pair_id,
+                EprPair {
+                    alice_id: Some(alice_id),
+                    bob_id: Some(bob_id),
+                    updated,
+                    fidelity,
+                    squashed_by: None,
+                    squashed: Some((epr_pair_id_pred, epr_pair_id_succ)),
+                },
+            );
+            self.last_epr_pair_id += 1;
+        } else {
+            panic!("ES: successor/predecessory EPR pair already (partially?) consumed")
+        }
+
+        // Squash the predecessor/successor EPR pairs with the new one created.
+        self.epr_pairs
+            .get_mut(&epr_pair_id_pred)
+            .unwrap()
+            .squash(new_epr_pair_id);
+        self.epr_pairs
+            .get_mut(&epr_pair_id_succ)
+            .unwrap()
+            .squash(new_epr_pair_id);
+
+        new_epr_pair_id
+    }
 }
 
 #[cfg(test)]
@@ -105,6 +267,8 @@ mod tests {
             bob_id: Some(2),
             updated: 999,
             fidelity: 0.5,
+            squashed_by: None,
+            squashed: None,
         };
 
         assert!(epr_pair.consume(42).is_none());
@@ -172,5 +336,35 @@ mod tests {
 
         assert!(register.consume(0, 1).is_none());
         assert!(register.consume(99, 1).is_none());
+    }
+
+    #[test]
+    fn test_epr_pair_register_entangle() {
+        let mut register = EprRegister::default();
+        assert!(register.epr_pairs.is_empty());
+
+        // 1 -- 2
+        //      2 -- 3
+        //           3 -- 4
+        let epr1 = register.new_epr_pair(1, 2, 999, 0.9);
+        let epr2 = register.new_epr_pair(2, 3, 999, 0.9);
+        let epr3 = register.new_epr_pair(3, 4, 999, 0.9);
+        assert_eq!(3, register.epr_pairs.len());
+
+        let new_epr1 = register.entanglement_swapping(1999, 0.001, epr1, epr2, 2);
+        let new_epr2 = register.entanglement_swapping(2999, 0.001, new_epr1, epr3, 3);
+        assert_eq!(5, register.epr_pairs.len());
+
+        let (updated1, fidelity1) = register.consume(new_epr2, 1).unwrap();
+        assert_eq!(5, register.epr_pairs.len());
+
+        let (updated2, fidelity2) = register.consume(new_epr2, 4).unwrap();
+        assert!(register.epr_pairs.is_empty());
+
+        assert_eq!(2999, updated1);
+        assert_eq!(2999, updated2);
+
+        assert_float_eq::assert_f64_near!(0.7382222197811112, fidelity1);
+        assert_float_eq::assert_f64_near!(0.7382222197811112, fidelity2);
     }
 }
