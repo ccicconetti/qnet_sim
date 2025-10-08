@@ -159,6 +159,9 @@ impl Network {
                 NetworkEventData::EprNotified(data) => self.handle_epr_notified(now, data),
                 NetworkEventData::EprConsume(data) => self.handle_epr_consume(now, data),
                 NetworkEventData::EprFree(data) => self.handle_epr_free(now, data),
+                NetworkEventData::EprEntanglementSwapping(data) => {
+                    self.handle_epr_entanglement_swapping(now, data)
+                }
             }
         } else {
             panic!(
@@ -205,24 +208,22 @@ impl Network {
 
                     // Add events notifying the creation of the EPR pair
                     // on the master/slave nodes.
-                    events.push(Event::new(
-                        0.0_f64,
-                        EventType::NetworkEvent(NetworkEventData::EprNotified(EprNotifiedData {
+                    events.push(Event::immediate(EventType::NetworkEvent(
+                        NetworkEventData::EprNotified(EprNotifiedData {
                             this_node_id: data.master_node_id,
                             peer_node_id: data.slave_node_id,
                             role: crate::nic::Role::Master,
                             epr_pair_id,
-                        })),
-                    ));
-                    events.push(Event::new(
-                        0.0_f64,
-                        EventType::NetworkEvent(NetworkEventData::EprNotified(EprNotifiedData {
+                        }),
+                    )));
+                    events.push(Event::immediate(EventType::NetworkEvent(
+                        NetworkEventData::EprNotified(EprNotifiedData {
                             this_node_id: data.slave_node_id,
                             peer_node_id: data.master_node_id,
                             role: crate::nic::Role::Slave,
                             epr_pair_id,
-                        })),
-                    ));
+                        }),
+                    )));
                 }
 
                 // Add event to generate another EPR pair in the future.
@@ -323,6 +324,31 @@ impl Network {
         }
 
         (vec![], samples)
+    }
+
+    /// Perform entanglement swapping on two EPR pairs.
+    fn handle_epr_entanglement_swapping(
+        &mut self,
+        now: u64,
+        data: EprEntangleSwappingData,
+    ) -> (Vec<Event>, Vec<Sample>) {
+        if let Some(weight) = self
+            .physical_topology
+            .graph()
+            .node_weight(data.bsm_node_id.into())
+        {
+            self.epr_register.entanglement_swapping(
+                now,
+                weight.decay_rate,
+                data.epr_pair_id_pred,
+                data.epr_pair_id_succ,
+                data.bsm_node_id,
+            );
+        } else {
+            panic!("ES requested for unknown node {}", data.bsm_node_id);
+        }
+
+        (vec![], vec![Sample::ScalarCount("bsm_tot".to_string())])
     }
 }
 

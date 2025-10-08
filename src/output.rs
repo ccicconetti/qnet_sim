@@ -247,6 +247,24 @@ pub struct OutputSeriesSingle {
     pub values: Vec<(Vec<String>, f64, f64)>,
 }
 
+impl OutputSeriesSingle {
+    /// Return summary status: min, avg, max, and number of samples.
+    pub fn stats(&self) -> (f64, f64, f64, usize) {
+        (
+            self.values
+                .iter()
+                .map(|x| x.2)
+                .fold(f64::INFINITY, |a, b| a.min(b)),
+            self.values.iter().map(|x| x.2).fold(0.0, |a, b| a + b) / self.values.len() as f64,
+            self.values
+                .iter()
+                .map(|x| x.2)
+                .fold(f64::NEG_INFINITY, |a, b| a.max(b)),
+            self.values.len(),
+        )
+    }
+}
+
 /// Series of values.
 /// The values are not recorded until `enabled()` is called.
 /// Each series is associated with a name (with optional header) and a label.

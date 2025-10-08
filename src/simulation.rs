@@ -107,6 +107,7 @@ impl Simulation {
         // Create data structure for scalar values.
         let mut single = crate::output::OutputScalar::default();
         single.init("bsm_prob", crate::output::ScalarMetricType::Avg);
+        single.init("bsm_tot", crate::output::ScalarMetricType::Count);
         single.init("event_queue_len", crate::output::ScalarMetricType::TimeAvg);
         single.init("local_epr_misses", crate::output::ScalarMetricType::Count);
         single.init("epr_frees", crate::output::ScalarMetricType::Count);

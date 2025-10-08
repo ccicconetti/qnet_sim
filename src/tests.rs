@@ -69,6 +69,8 @@ pub fn logical_topology_2_2() -> (
 
 #[cfg(test)]
 mod tests {
+    use core::f64;
+
     use crate::config::*;
     use crate::output::OutputSeriesSingle;
     use crate::simulation::Simulation;
@@ -151,14 +153,14 @@ mod tests {
         assert!(*scalar.get("event_queue_len").unwrap() > 0.0);
         assert!(*scalar.get("num_events").unwrap() > 0.0);
         assert!(scalar.get("bsm_prob").unwrap().is_nan());
+        assert_float_eq::assert_f64_near!(0.0, *scalar.get("bsm_tot").unwrap());
 
         let series = output.series.series;
         for (metric, values) in &series {
             println!(
-                "series {} [#{}]: {:?}",
+                "series {} stats (min/avg/max/len) {:?}",
                 metric,
-                values.values.len(),
-                values.values
+                values.stats()
             );
         }
         assert_eq!(100, series.get("epr-request-latency").unwrap().values.len());

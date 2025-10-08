@@ -452,14 +452,13 @@ impl Node {
                 role: super::nic::Role::Slave,
                 epr_pair_id: data.epr_pair_id,
             });
-            events.push(Event::new(
-                0.0_f64,
-                EventType::AppEvent(AppEventData::EprResponse(EprResponseData {
+            events.push(Event::immediate(EventType::AppEvent(
+                AppEventData::EprResponse(EprResponseData {
                     epr,
                     is_source: false,
                     memory_cell,
-                })),
-            ));
+                }),
+            )));
         } else {
             // This is an intermediate node.
             assert!(pos < data.path.len() - 1);
@@ -541,6 +540,15 @@ impl Node {
                     self.node_id, succ_memory_cell
                 );
             }
+
+            // Notify the network to perform ES.
+            events.push(Event::immediate(EventType::NetworkEvent(
+                NetworkEventData::EprEntanglementSwapping(EprEntangleSwappingData {
+                    epr_pair_id_pred: pred_memory_cell.epr_pair_id,
+                    epr_pair_id_succ: succ_memory_cell.epr_pair_id,
+                    bsm_node_id: self.node_id,
+                }),
+            )));
         }
 
         (events, samples)
@@ -587,14 +595,13 @@ impl Node {
                 self.node_id,
                 waiting_data
             );
-            let events = vec![Event::new(
-                0.0_f64,
-                EventType::AppEvent(AppEventData::EprResponse(EprResponseData {
+            let events = vec![Event::immediate(EventType::AppEvent(
+                AppEventData::EprResponse(EprResponseData {
                     epr,
                     is_source: true,
                     memory_cell: Some(waiting_data.succ_memory_cell),
-                })),
-            )];
+                }),
+            ))];
             (
                 events,
                 vec![Sample::Series(
