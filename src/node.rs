@@ -555,6 +555,7 @@ impl Node {
     }
 
     /// Free the local memory cell corresponding to the given EPR.
+    /// Notify the network that a half EPR has been consumed.
     fn handle_es_free_memory_cell(
         &mut self,
         _now: u64,
@@ -563,14 +564,20 @@ impl Node {
         assert_eq!(data.target, self.node_id);
         assert_eq!(crate::nic::Role::Slave, data.memory_cell.role);
 
-        if !self.local_free_by_memory_cell(&data.memory_cell) {
-            panic!(
-                "failed at node {} to free memory cell {:?}:\n{}",
-                self.node_id, data.memory_cell, self
-            );
+        // It can happen that there's no memory cell with the given EPR
+        // when processing this messages, because an EPR freshly generated
+        // has taken its place.
+        let mut events = vec![];
+        if self.local_free_by_memory_cell(&data.memory_cell) {
+            events.push(Event::new(
+                0.0,
+                EventType::NetworkEvent(NetworkEventData::EprFree(EprFreeData {
+                    epr_pair_id: data.memory_cell.epr_pair_id,
+                    node_id: self.node_id,
+                })),
+            ));
         }
-
-        (vec![], vec![])
+        (events, vec![])
     }
 
     /// Handle indication at the source node that a remote entanglement
@@ -640,33 +647,22 @@ impl Node {
         });
         assert!(matches!(memory_cell.role, crate::nic::Role::Master));
 
-        // Send request to free the peer memory cell (slave), unless the
-        // EsRemoteFailed message came from that node.
-        let mut events = vec![];
-        if data.sender != memory_cell.neighbor_node_id {
-            let memory_cell_reverse = MemoryCellId {
-                neighbor_node_id: self.node_id,
-                role: crate::nic::Role::Slave,
+        // Notify the network that a half EPR has been consumed.
+        let mut events = vec![Event::new(
+            0.0,
+            EventType::NetworkEvent(NetworkEventData::EprFree(EprFreeData {
                 epr_pair_id: memory_cell.epr_pair_id,
-            };
-            let target = memory_cell.neighbor_node_id;
-            events.push(Event::new_transfer(
-                EventType::NodeEvent(NodeEventData::EsFreeMemoryCell(EsFreeMemoryCellData {
-                    memory_cell: memory_cell_reverse,
-                    target,
-                })),
-                self.node_id,
-                target,
-            ));
-        }
+                node_id: self.node_id,
+            })),
+        )];
 
         // Reschedule the failed app request.
         let app_request = self.pop_app_request(&epr);
-        let (mut new_events, _new_samples) =
+        let (mut new_events, samples) =
             self.handle_epr_request_app(now, app_request.received, app_request.epr);
         events.append(&mut new_events);
 
-        (events, vec![])
+        (events, samples)
     }
 
     /// Return the predecessor of this node in a path.
