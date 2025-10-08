@@ -167,7 +167,7 @@ mod tests {
         assert_eq!(100, series.get("ping-latency").unwrap().values.len());
         assert_eq!(200, series.get("fidelity").unwrap().values.len());
         check_interval("fidelity", &series, 0.92, 1.0);
-        check_interval("gen_fidelity", &series, 0.95, 0.99);
+        check_interval("gen-fidelity", &series, 0.95, 0.99);
 
         Ok(())
     }

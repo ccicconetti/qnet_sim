@@ -34,6 +34,10 @@ struct AppRequest {
     received: u64,
     /// EPR five tuple.
     epr: EprFiveTuple,
+    /// Number of tries.
+    tries: usize,
+    /// Path
+    path: Vec<u32>,
 }
 
 #[derive(Debug, Clone)]
@@ -264,11 +268,41 @@ impl Node {
             "src and dst nodes must be different"
         );
 
+        // Find the path to go from src to dst in the logical topology.
+        assert_eq!(self.node_id, epr.source_node_id);
+        let path = self
+            .logical_topology
+            .path(epr.source_node_id, epr.target_node_id);
+        assert!(path.len() >= 2);
+        assert_eq!(epr.source_node_id, *path.first().unwrap());
+        assert_eq!(epr.target_node_id, *path.last().unwrap());
+
+        let mut samples = vec![];
+        if epr.request_id == 0 {
+            samples.push(Sample::Series(
+                "app-path-len".to_string(),
+                vec![epr.source_node_id.to_string(), epr.source_port.to_string()],
+                path.len() as f64,
+            ));
+        }
+
         self.pending_app_requests.push(AppRequest {
             received,
             epr: epr.clone(),
+            tries: 1,
+            path: path.clone(),
         });
 
+        let (events, mut new_samples) = self.handle_epr_request_app_inner(epr, path);
+        samples.append(&mut new_samples);
+        (events, samples)
+    }
+
+    fn handle_epr_request_app_inner(
+        &mut self,
+        epr: EprFiveTuple,
+        path: Vec<u32>,
+    ) -> (Vec<Event>, Vec<Sample>) {
         log::debug!(
             "node {} pending app requests:\n{}",
             self.node_id,
@@ -278,15 +312,6 @@ impl Node {
                 .collect::<Vec<String>>()
                 .join("\n")
         );
-
-        // Find the path to go from src to dst in the logical topology.
-        assert_eq!(self.node_id, epr.source_node_id);
-        let path = self
-            .logical_topology
-            .path(epr.source_node_id, epr.target_node_id);
-        assert!(path.len() >= 2);
-        assert_eq!(epr.source_node_id, *path.first().unwrap());
-        assert_eq!(epr.target_node_id, *path.last().unwrap());
 
         let successor = self.successor(&path);
         self.pending_es_requests
@@ -607,21 +632,25 @@ impl Node {
             );
             let events = vec![Event::immediate(EventType::AppEvent(
                 AppEventData::EprResponse(EprResponseData {
-                    epr,
+                    epr: epr.clone(),
                     is_source: true,
                     memory_cell: Some(waiting_data.succ_memory_cell),
                 }),
             ))];
             (
                 events,
-                vec![Sample::Series(
-                    "epr-request-latency".to_string(),
-                    vec![
-                        self.node_id.to_string(),
-                        (es_request.path.len() - 1).to_string(),
-                    ],
-                    crate::utils::to_seconds(now - app_request.received),
-                )],
+                vec![
+                    Sample::Series(
+                        "app-net-latency".to_string(),
+                        vec![epr.source_node_id.to_string(), epr.source_port.to_string()],
+                        crate::utils::to_seconds(now - app_request.received),
+                    ),
+                    Sample::Series(
+                        "app-tries".to_string(),
+                        vec![epr.source_node_id.to_string(), epr.source_port.to_string()],
+                        app_request.tries as f64,
+                    ),
+                ],
             )
         } else {
             panic!("invalid status of ES request at node {} for EPR {}: expected WaitingForResponse, found {:?}", self.node_id, epr, es_request.status)
@@ -635,7 +664,7 @@ impl Node {
     /// free the local EPR pair and reschedule the end-to-end request.
     fn handle_es_remote_failed(
         &mut self,
-        now: u64,
+        _now: u64,
         data: EsRemoteFailedData,
     ) -> (Vec<Event>, Vec<Sample>) {
         let epr = data.epr;
@@ -660,9 +689,17 @@ impl Node {
         )];
 
         // Reschedule the failed app request.
-        let app_request = self.pop_app_request(&epr);
-        let (mut new_events, samples) =
-            self.handle_epr_request_app(now, app_request.received, app_request.epr);
+        let (epr, path) = {
+            let app_request = self
+                .pending_app_requests
+                .iter_mut()
+                .find(|x| x.epr == epr)
+                .expect("application disappeared from node");
+            app_request.tries += 1;
+            (app_request.epr.clone(), app_request.path.clone())
+        };
+
+        let (mut new_events, samples) = self.handle_epr_request_app_inner(epr, path);
         events.append(&mut new_events);
 
         (events, samples)

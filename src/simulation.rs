@@ -114,14 +114,16 @@ impl Simulation {
 
         // Create data structure for time series, also setting the headers
         let mut series = crate::output::OutputSeries::new(config.user_config.series_ignore.clone());
-        series.set_headers("gen_fidelity", &["node_id"]);
+        series.set_headers("gen-fidelity", &["node_id"]);
         series.set_headers("fidelity", &["node_id", "port"]);
         series.set_headers("occupancy", &["node_id", "peer_node_id"]);
-        series.set_headers("epr-request-latency", &["node_id", "path_length"]);
+        series.set_headers("app-net-latency", &["node_id", "port"]);
         series.set_headers("client-latency", &["node_id", "port"]);
         series.set_headers("client-queue-len", &["node_id", "port"]);
         series.set_headers("ping-latency", &["node_id", "peer_node_id"]);
         series.set_headers("server-queue-len", &["node_id", "port"]);
+        series.set_headers("app-path-len", &["node_id", "port"]);
+        series.set_headers("app-tries", &["node_id", "port"]);
 
         Ok(Self {
             network,

@@ -204,7 +204,7 @@ impl Network {
                     data.slave_node_id,
                 ) {
                     samples.push(Sample::Series(
-                        "gen_fidelity".to_string(),
+                        "gen-fidelity".to_string(),
                         vec![data.tx_node_id.to_string()],
                         fidelity,
                     ));
