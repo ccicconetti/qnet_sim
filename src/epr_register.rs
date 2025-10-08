@@ -52,16 +52,45 @@ impl EprPair {
     /// Mark this EPR pair as squashed by another one during ES.
     pub fn squash(&mut self, squashing_id: u64) {
         assert!(
-            self.alice_id.is_some(),
-            "ES: squashing an EPR pair already (half) consumed"
-        );
-        assert!(
-            self.bob_id.is_some(),
-            "ES: squashing an EPR pair already (half) consumed"
+            self.alice_id.is_some() || self.bob_id.is_some(),
+            "ES: squashing an empty EPR"
         );
         self.alice_id = None;
         self.bob_id = None;
         self.squashed_by = Some(squashing_id);
+    }
+
+    /// Return true if both qubits have not been measured/consumed.
+    pub fn is_complete(&self) -> bool {
+        self.alice_id.is_some() && self.bob_id.is_some()
+    }
+
+    /// Return the ID of the other `node_id`, or None if not available.
+    pub fn other_node_id(&self, node_id: u32) -> Option<u32> {
+        if let Some(alice_id) = self.alice_id {
+            if alice_id == node_id {
+                self.bob_id
+            } else {
+                Some(alice_id)
+            }
+        } else {
+            assert!(self.alice_id.is_none());
+            if let Some(bob_id) = self.bob_id {
+                if bob_id == node_id {
+                    None
+                } else {
+                    Some(bob_id)
+                }
+            } else {
+                None
+            }
+        }
+    }
+
+    // Return true if the given `node_id` is one of the end points of the pair.
+    pub fn is_node(&self, node_id: u32) -> bool {
+        (self.alice_id.is_some() && self.alice_id.unwrap() == node_id)
+            || (self.bob_id.is_some() && self.bob_id.unwrap() == node_id)
     }
 }
 
@@ -149,8 +178,6 @@ impl EprRegister {
                 self.find_all_squashed(squashed_alice_id, all_squashed_ids);
                 self.find_all_squashed(squashed_bob_id, all_squashed_ids);
             }
-        } else {
-            panic!("could not find EPR pair with ID {epr_pair_id} in the register")
         }
         all_squashed_ids.push(epr_pair_id);
     }
@@ -171,7 +198,25 @@ impl EprRegister {
     /// - Both the predecessor and successor EPR pairs are marked as squashed
     ///   into the new one.
     ///
+    /// There are different cases if some of the EPR pairs have been
+    /// (even partially) consumed:
+    ///
+    /// Consider:
+    ///
+    /// ```text
+    /// A -- 1 -- B
+    ///           B -- 2 -- C
+    ///
+    ///                result     fidelity
+    /// 1: AB 2: XX    AX          0
+    ///    AB    BX    AX          0
+    ///    AB    CX    AC          0
+    ///    AB    BC    AC          regular case, compute with formula
+    /// ```
+    ///
     /// Return the new EPR pair ID.
+    ///
+    /// Panic if there isn't at least one complete EPR pair.
     pub fn entanglement_swapping(
         &mut self,
         updated: u64,
@@ -180,14 +225,13 @@ impl EprRegister {
         epr_pair_id_succ: u64,
         bsm_node_id: u32,
     ) -> u64 {
-        let pred = self
-            .epr_pairs
-            .get(&epr_pair_id_pred)
-            .expect("ES: cannot find predecessor EPR pair");
-        let succ = self
-            .epr_pairs
-            .get(&epr_pair_id_succ)
-            .expect("ES: cannot find successor EPR pair");
+        let pred = self.epr_pairs.get(&epr_pair_id_pred);
+        let succ = self.epr_pairs.get(&epr_pair_id_succ);
+
+        assert!(
+            (pred.is_some() && pred.unwrap().is_complete())
+                || (succ.is_some() && succ.unwrap().is_complete())
+        );
 
         let new_epr_pair_id = self.last_epr_pair_id;
 
@@ -195,24 +239,23 @@ impl EprRegister {
         //
         // alice ----- repeater                (pred)
         //             repeater ----- bob      (succ)
-        if let (Some(pred_alice_id), Some(pred_bob_id), Some(succ_alice_id), Some(succ_bob_id)) =
-            (pred.alice_id, pred.bob_id, succ.alice_id, succ.bob_id)
+        if pred.is_some()
+            && pred.unwrap().is_complete()
+            && succ.is_some()
+            && succ.unwrap().is_complete()
         {
-            assert!(pred_alice_id == bsm_node_id || pred_bob_id == bsm_node_id);
-            assert!(succ_alice_id == bsm_node_id || succ_bob_id == bsm_node_id);
+            // Regular case: both EPR pairs are complete.
+            let pred = pred.unwrap();
+            let succ = succ.unwrap();
+
+            // Check invariants.
+            assert!(pred.is_node(bsm_node_id));
+            assert!(succ.is_node(bsm_node_id));
             assert!(pred.updated < updated);
             assert!(succ.updated < updated);
 
-            let alice_id = if pred_alice_id == bsm_node_id {
-                pred_bob_id
-            } else {
-                pred_alice_id
-            };
-            let bob_id = if succ_alice_id == bsm_node_id {
-                succ_bob_id
-            } else {
-                succ_alice_id
-            };
+            let alice_id = pred.other_node_id(bsm_node_id).unwrap();
+            let bob_id = succ.other_node_id(bsm_node_id).unwrap();
 
             let f1 = crate::utils::fidelity_decay(
                 pred.fidelity,
@@ -237,20 +280,45 @@ impl EprRegister {
                     squashed: Some((epr_pair_id_pred, epr_pair_id_succ)),
                 },
             );
-            self.last_epr_pair_id += 1;
         } else {
-            panic!("ES: successor/predecessory EPR pair already (partially?) consumed")
+            // At least one of the EPR pairs is not present or complete.
+            // Let's find which one.
+
+            let (complete, incomplete) = if pred.is_some() && pred.unwrap().is_complete() {
+                (pred.unwrap(), succ)
+            } else {
+                assert!(succ.is_some() && succ.unwrap().is_complete());
+                (succ.unwrap(), pred)
+            };
+
+            let alice_id = complete.other_node_id(bsm_node_id).unwrap();
+            let bob_id = if let Some(incomplete) = incomplete {
+                incomplete.other_node_id(bsm_node_id)
+            } else {
+                None
+            };
+
+            self.epr_pairs.insert(
+                new_epr_pair_id,
+                EprPair {
+                    alice_id: Some(alice_id),
+                    bob_id,
+                    updated,
+                    fidelity: 0.0,
+                    squashed_by: None,
+                    squashed: Some((epr_pair_id_pred, epr_pair_id_succ)),
+                },
+            );
         }
+        self.last_epr_pair_id += 1;
 
         // Squash the predecessor/successor EPR pairs with the new one created.
-        self.epr_pairs
-            .get_mut(&epr_pair_id_pred)
-            .unwrap()
-            .squash(new_epr_pair_id);
-        self.epr_pairs
-            .get_mut(&epr_pair_id_succ)
-            .unwrap()
-            .squash(new_epr_pair_id);
+        if let Some(epr_pair) = self.epr_pairs.get_mut(&epr_pair_id_pred) {
+            epr_pair.squash(new_epr_pair_id);
+        }
+        if let Some(epr_pair) = self.epr_pairs.get_mut(&epr_pair_id_succ) {
+            epr_pair.squash(new_epr_pair_id);
+        }
 
         new_epr_pair_id
     }
@@ -258,6 +326,8 @@ impl EprRegister {
 
 #[cfg(test)]
 mod tests {
+    use petgraph::matrix_graph::Zero;
+
     use super::{EprPair, EprRegister};
 
     #[test]
@@ -339,7 +409,7 @@ mod tests {
     }
 
     #[test]
-    fn test_epr_pair_register_entangle() {
+    fn test_epr_pair_register_entanglement_swapping() {
         let mut register = EprRegister::default();
         assert!(register.epr_pairs.is_empty());
 
@@ -366,5 +436,88 @@ mod tests {
 
         assert_float_eq::assert_f64_near!(0.7382222197811112, fidelity1);
         assert_float_eq::assert_f64_near!(0.7382222197811112, fidelity2);
+    }
+
+    #[test]
+    fn test_epr_pair_register_es_consumed_pairs() {
+        let mut register = EprRegister::default();
+        assert!(register.epr_pairs.is_empty());
+
+        // 1 -- 2
+        //      2 -- 3
+
+        // Consume epr1 on node 1
+        let epr1 = register.new_epr_pair(1, 2, 999, 0.9);
+        let epr2 = register.new_epr_pair(2, 3, 999, 0.9);
+        register.consume(epr1, 1);
+        let epr_new = register.entanglement_swapping(1999, 0.001, epr1, epr2, 2);
+
+        let (updated, fidelity) = register.consume(epr_new, 3).unwrap();
+        assert_eq!(1999, updated);
+        assert!(fidelity.is_zero());
+        assert!(register.epr_pairs.is_empty());
+
+        // Consume epr1 on node 2
+        let epr1 = register.new_epr_pair(1, 2, 999, 0.9);
+        let epr2 = register.new_epr_pair(2, 3, 999, 0.9);
+        register.consume(epr1, 2);
+        let epr_new = register.entanglement_swapping(1999, 0.001, epr1, epr2, 2);
+
+        let (updated, fidelity) = register.consume(epr_new, 1).unwrap();
+        assert_eq!(1999, updated);
+        assert!(fidelity.is_zero());
+        let (updated, fidelity) = register.consume(epr_new, 3).unwrap();
+        assert_eq!(1999, updated);
+        assert!(fidelity.is_zero());
+        assert!(register.epr_pairs.is_empty());
+
+        // Consume epr2 on node 2
+        let epr1 = register.new_epr_pair(1, 2, 999, 0.9);
+        let epr2 = register.new_epr_pair(2, 3, 999, 0.9);
+        register.consume(epr2, 2);
+        let epr_new = register.entanglement_swapping(1999, 0.001, epr1, epr2, 2);
+
+        let (updated, fidelity) = register.consume(epr_new, 1).unwrap();
+        assert_eq!(1999, updated);
+        assert!(fidelity.is_zero());
+        let (updated, fidelity) = register.consume(epr_new, 3).unwrap();
+        assert_eq!(1999, updated);
+        assert!(fidelity.is_zero());
+        assert!(register.epr_pairs.is_empty());
+
+        // Consume epr2 on node 3
+        let epr1 = register.new_epr_pair(1, 2, 999, 0.9);
+        let epr2 = register.new_epr_pair(2, 3, 999, 0.9);
+        register.consume(epr2, 3);
+        let epr_new = register.entanglement_swapping(1999, 0.001, epr1, epr2, 2);
+
+        let (updated, fidelity) = register.consume(epr_new, 1).unwrap();
+        assert_eq!(1999, updated);
+        assert!(fidelity.is_zero());
+        assert!(register.epr_pairs.is_empty());
+
+        // Consume completely epr1
+        let epr1 = register.new_epr_pair(1, 2, 999, 0.9);
+        let epr2 = register.new_epr_pair(2, 3, 999, 0.9);
+        register.consume(epr1, 1);
+        register.consume(epr1, 2);
+        let epr_new = register.entanglement_swapping(1999, 0.001, epr1, epr2, 2);
+
+        let (updated, fidelity) = register.consume(epr_new, 3).unwrap();
+        assert_eq!(1999, updated);
+        assert!(fidelity.is_zero());
+        assert!(register.epr_pairs.is_empty());
+
+        // Consume completely epr2
+        let epr1 = register.new_epr_pair(1, 2, 999, 0.9);
+        let epr2 = register.new_epr_pair(2, 3, 999, 0.9);
+        register.consume(epr2, 2);
+        register.consume(epr2, 3);
+        let epr_new = register.entanglement_swapping(1999, 0.001, epr1, epr2, 2);
+
+        let (updated, fidelity) = register.consume(epr_new, 1).unwrap();
+        assert_eq!(1999, updated);
+        assert!(fidelity.is_zero());
+        assert!(register.epr_pairs.is_empty());
     }
 }
