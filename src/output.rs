@@ -409,7 +409,7 @@ pub fn save_outputs(
                 continue;
             }
             let header_common = format!(
-                "{}{}{}{}{},time,value",
+                "{}{}{}{}{}",
                 additional_header,
                 header_comma,
                 if save_config { &config_csv_header } else { "" },
