@@ -1,0 +1,57 @@
+{
+  "duration": $DURATION,
+  "warmup_period": 0.0,
+  "series_ignore": ["gen-fidelity", "occupancy"],
+  "sections_not_serialized": ["applications"],
+  "physical_topology": {
+    "ConfChainStatic": {
+      "chain_params": {
+        "orbit_to_orbit_distance": 3000000.0,
+        "ground_to_orbit_distance": 1000000.0,
+        "num_repeaters": $NUM_REPEATERS
+      },
+      "sat_weight": {
+        "node_type": "SAT",
+        "memory_qubits": $MEMORY_QUBITS,
+        "decay_rate": 1.0,
+        "swapping_success_prob": 0.95,
+        "swapping_duration": 0.001,
+        "correction_duration": 0.0,
+        "detectors": 10,
+        "transmitters": 10,
+        "capacity": 1000.0
+      },
+      "ogs_weight": {
+        "node_type": "OGS",
+        "memory_qubits": $MEMORY_QUBITS,
+        "decay_rate": 1.0,
+        "swapping_success_prob": 0.0,
+        "swapping_duration": 0.0,
+        "correction_duration": 0.001,
+        "detectors": 10,
+        "transmitters": 0,
+        "capacity": 0.0
+      },
+      "fidelities": {
+        "f_o": 0.99,
+        "f_g": 0.97,
+        "f_oo": 0.95,
+        "f_og": 0.93,
+        "f_gg": 0.91
+      }
+    }
+  },
+  "logical_topology": {
+    "physical_to_logical_policy": "RandomGreedy"
+  },
+  "applications": {
+    "ConfPing": {
+        "source_dest_pairs": {
+          "List": [
+            $PAIRS
+          ]
+        },
+      "max_requests": 0
+    }
+  }
+}
