@@ -101,6 +101,7 @@ mod tests {
             duration,
             warmup_period: 0.0,
             series_ignore: std::collections::HashSet::new(),
+            sections_not_serialized: std::collections::HashSet::new(),
             physical_topology: PhysicalTopology::ConfChainStatic(ConfChainStatic {
                 chain_params: crate::physical_topology::ChainParams {
                     orbit_to_orbit_distance: 3000000.0,

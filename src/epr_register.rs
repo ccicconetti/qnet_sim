@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: © 2025 Claudio Cicconetti <c.cicconetti@iit.cnr.it>
 // SPDX-License-Identifier: MIT
 
-use std::u64;
-
 const P1: f64 = 1.0_f64;
 const P2: f64 = 1.0_f64;
 const ETA: f64 = 1.0_f64;
@@ -75,15 +73,7 @@ impl EprPair {
             }
         } else {
             assert!(self.alice_id.is_none());
-            if let Some(bob_id) = self.bob_id {
-                if bob_id == node_id {
-                    None
-                } else {
-                    Some(bob_id)
-                }
-            } else {
-                None
-            }
+            self.bob_id.filter(|&bob_id| bob_id != node_id)
         }
     }
 
@@ -104,6 +94,11 @@ impl EprRegister {
     /// Return the number of currently active (non-measured) EPR pairs.
     pub fn len(&self) -> usize {
         self.epr_pairs.len()
+    }
+
+    /// Return true if the register is empty.
+    pub fn is_empty(&self) -> bool {
+        self.epr_pairs.is_empty()
     }
 
     /// Create a new EPR pair with given characteristics. Return its identifier.
@@ -252,7 +247,9 @@ impl EprRegister {
             && succ.unwrap().is_complete()
         {
             // Regular case: both EPR pairs are complete.
+            #[allow(clippy::unnecessary_unwrap)]
             let pred = pred.unwrap();
+            #[allow(clippy::unnecessary_unwrap)]
             let succ = succ.unwrap();
 
             // Check invariants.
@@ -292,9 +289,11 @@ impl EprRegister {
             // Let's find which one.
 
             let (complete, incomplete) = if pred.is_some() && pred.unwrap().is_complete() {
+                #[allow(clippy::unnecessary_unwrap)]
                 (pred.unwrap(), succ)
             } else {
                 assert!(succ.is_some() && succ.unwrap().is_complete());
+                #[allow(clippy::unnecessary_unwrap)]
                 (succ.unwrap(), pred)
             };
 

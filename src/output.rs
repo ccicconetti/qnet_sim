@@ -479,7 +479,7 @@ pub fn save_outputs(
                 for (label, samples) in stats {
                     let percentiles = samples
                         .percentiles
-                        .percentiles(&[0.05, 0.25, 0.50, 0.75, 0.95])
+                        .percentiles([0.05, 0.25, 0.50, 0.75, 0.95])
                         .unwrap_or_default()
                         .unwrap_or_default();
                     writeln!(

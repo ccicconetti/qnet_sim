@@ -94,7 +94,7 @@ pub fn struct_to_csv<T: Serialize>(s: T) -> anyhow::Result<String> {
     let fields = struct_to_map(s)?;
     let mut ret = vec![];
     for (_name, value) in fields {
-        ret.push(format!("{value}"));
+        ret.push(format!("{value}").replace(",", ";"));
     }
     Ok(ret.join(","))
 }
@@ -104,7 +104,7 @@ pub fn struct_to_csv_header<T: Serialize>(s: T) -> anyhow::Result<String> {
 
     let mut ret = vec![];
     for (name, _value) in fields {
-        ret.push(name);
+        ret.push(name.replace(",", ";"));
     }
     Ok(ret.join(","))
 }
@@ -113,7 +113,7 @@ fn struct_to_map<T: Serialize>(s: T) -> anyhow::Result<serde_json::Map<String, s
     let value = serde_json::to_value(s)?;
     let mut fields = json_unflattening::flattening::flatten(&value)?;
     fields.sort_keys();
-    Ok(fields.clone())
+    Ok(fields)
 }
 
 #[cfg(test)]

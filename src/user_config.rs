@@ -239,6 +239,8 @@ pub struct UserConfig {
     pub warmup_period: f64,
     /// Time series metrics to ignore.
     pub series_ignore: std::collections::HashSet<String>,
+    /// Sections that are not serialized.
+    pub sections_not_serialized: std::collections::HashSet<String>,
     /// The physical topology configuration.
     pub physical_topology: PhysicalTopology,
     /// The logical topology configuration.
@@ -253,6 +255,7 @@ impl Default for UserConfig {
             duration: 10.0,
             warmup_period: 1.0,
             series_ignore: std::collections::HashSet::new(),
+            sections_not_serialized: std::collections::HashSet::new(),
             physical_topology: PhysicalTopology::ConfGridStatic(ConfGridStatic::default()),
             logical_topology: LogicalTopology::default(),
             applications: Applications::default(),
@@ -262,21 +265,35 @@ impl Default for UserConfig {
 
 impl crate::utils::CsvFriend for UserConfig {
     fn header(&self) -> String {
-        format!(
-            "duration,warmup_period,{},{},{}",
-            self.physical_topology.header(),
-            self.logical_topology.header(),
-            self.applications.header()
-        )
+        let mut ret = format!("duration,warmup_period");
+        if !self.sections_not_serialized.contains("physical_topology") {
+            ret += ",";
+            ret += &self.physical_topology.header();
+        }
+        if !self.sections_not_serialized.contains("logical_topology") {
+            ret += ",";
+            ret += &self.logical_topology.header();
+        }
+        if !self.sections_not_serialized.contains("applications") {
+            ret += ",";
+            ret += &self.applications.header();
+        }
+        ret
     }
     fn to_csv(&self) -> String {
-        format!(
-            "{},{},{},{},{}",
-            self.duration,
-            self.warmup_period,
-            self.physical_topology.to_csv(),
-            self.logical_topology.to_csv(),
-            self.applications.to_csv()
-        )
+        let mut ret = format!("{},{}", self.duration, self.warmup_period);
+        if !self.sections_not_serialized.contains("physical_topology") {
+            ret += ",";
+            ret += &self.physical_topology.to_csv();
+        }
+        if !self.sections_not_serialized.contains("logical_topology") {
+            ret += ",";
+            ret += &self.logical_topology.to_csv();
+        }
+        if !self.sections_not_serialized.contains("applications") {
+            ret += ",";
+            ret += &self.applications.to_csv();
+        }
+        ret
     }
 }

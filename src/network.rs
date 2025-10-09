@@ -117,7 +117,7 @@ impl Network {
                     slave_node_id,
                     rv: rand_distr::Exp::new(edge.weight().capacity)
                         .expect("could not create an expo rv"),
-                    rng: rand::rngs::StdRng::seed_from_u64(next_seed as u64),
+                    rng: rand::rngs::StdRng::seed_from_u64(next_seed),
                 });
             next_seed += 1;
         }
@@ -129,7 +129,7 @@ impl Network {
             epr_register,
             physical_topology,
             logical_topology,
-            rng: rand::rngs::StdRng::seed_from_u64(next_seed as u64),
+            rng: rand::rngs::StdRng::seed_from_u64(next_seed),
         }
     }
 
