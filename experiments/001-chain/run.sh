@@ -43,6 +43,11 @@ num_pairs_v="1 10"
 # Execute experiments
 #
 
+if [[ "$DRY" == "" &&  -d "data" && ! -z "$( ls -A 'data/' )" ]] ; then
+    read -p "directory 'data' exists and is non-empty: do you want to remove the content? [Y/N]: " confirm && [[ $confirm == [yY] || $confirm == [yY][eE][sS] ]] || exit 1
+    rm -rf data/* 2> /dev/null
+fi
+
 rm conf.json 2> /dev/null
 
 for NUM_REPEATERS in $num_repeaters_v ; do
