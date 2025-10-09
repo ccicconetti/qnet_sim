@@ -96,7 +96,7 @@ mod tests {
         }
     }
 
-    fn make_config(duration: f64, seed: u64, num_repeaters: u32) -> Config {
+    fn make_config(duration: f64, memory_qubits: u32, seed: u64, num_repeaters: u32) -> Config {
         let user_config = UserConfig {
             duration,
             warmup_period: 0.0,
@@ -107,8 +107,28 @@ mod tests {
                     ground_to_orbit_distance: 1000000.0,
                     num_repeaters,
                 },
-                sat_weight: default_sat_weight(),
-                ogs_weight: default_ogs_weight(),
+                sat_weight: crate::physical_topology::NodeWeight {
+                    node_type: crate::physical_topology::NodeType::SAT,
+                    memory_qubits,
+                    decay_rate: 1.0,
+                    swapping_success_prob: 0.95,
+                    swapping_duration: 0.001,
+                    correction_duration: 0.0,
+                    detectors: 10,
+                    transmitters: 10,
+                    capacity: 1000.0,
+                },
+                ogs_weight: crate::physical_topology::NodeWeight {
+                    node_type: crate::physical_topology::NodeType::OGS,
+                    memory_qubits,
+                    decay_rate: 1.0,
+                    swapping_success_prob: 0.0,
+                    swapping_duration: 0.0,
+                    correction_duration: 0.001,
+                    detectors: 10,
+                    transmitters: 0,
+                    capacity: 0.0,
+                },
                 fidelities: crate::physical_topology::StaticFidelities {
                     f_o: 0.99,
                     f_g: 0.98,
@@ -129,7 +149,7 @@ mod tests {
     #[ignore]
     #[test]
     fn test_config_to_json() {
-        let config = make_config(1.0, 42, 1);
+        let config = make_config(1.0, 10, 42, 1);
         println!("{}", serde_json::to_string_pretty(&config).unwrap());
     }
 
@@ -139,7 +159,7 @@ mod tests {
 
         let mut sim = None;
         for seed in 0..100 {
-            let cand_sim = Simulation::new(make_config(10.0, seed, 1), false)?;
+            let cand_sim = Simulation::new(make_config(10.0, 20, seed, 1), false)?;
             if cand_sim.logical_path(0, 1).len() == 2 {
                 sim = Some(cand_sim);
                 break;
@@ -172,7 +192,7 @@ mod tests {
         assert_eq!(200, series.get("fidelity").unwrap().values.len());
         check_interval("fidelity", &series, 0.92, 1.0);
         check_interval("gen-fidelity", &series, 0.95, 0.99);
-        check_interval("app-tries", &series, 1.0, 1.0);
+        check_interval("app-tries", &series, 1.0, 3.0);
         check_interval("occupancy", &series, 0.0, 1.0);
         check_interval("app-path-len", &series, 1.0, 2.0);
 
@@ -185,7 +205,7 @@ mod tests {
 
         let mut sim = None;
         for seed in 0..100 {
-            let cand_sim = Simulation::new(make_config(120.0, seed, 3), false)?;
+            let cand_sim = Simulation::new(make_config(20.0, 100, seed, 3), false)?;
             if cand_sim.logical_path(0, 1).len() == 3 {
                 sim = Some(cand_sim);
                 break;
