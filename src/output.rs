@@ -330,6 +330,40 @@ impl OutputSeries {
     }
 }
 
+#[derive(Default)]
+struct StatsSingle {
+    summary: inc_stats::SummStats<f64>,
+    percentiles: inc_stats::Percentiles<f64>,
+}
+
+type StatsContainer =
+    std::collections::HashMap<String, std::collections::HashMap<String, StatsSingle>>;
+#[derive(Default)]
+struct Stats {
+    // hashmap of:
+    //   key: metric name
+    //   value: hashmap of:
+    //     key: label name
+    //     value: statistics
+    stats: StatsContainer,
+}
+
+impl Stats {
+    fn new(output_series: &OutputSeries) -> Self {
+        let mut stats: StatsContainer = std::collections::HashMap::new();
+        for (metric, series) in &output_series.series {
+            stats.insert(metric.clone(), std::collections::HashMap::new());
+            for (label, _timestamp, value) in &series.values {
+                let label = label.join(",");
+                let stats_single = stats.get_mut(metric).unwrap().entry(label).or_default();
+                stats_single.summary.add(value);
+                stats_single.percentiles.add(value);
+            }
+        }
+        Self { stats }
+    }
+}
+
 pub struct Output {
     pub scalar: OutputScalar,
     pub series: OutputSeries,
@@ -368,26 +402,42 @@ pub fn save_outputs(
         .as_str(),
     )?;
     let mut series_files = std::collections::HashMap::new();
+    let mut series_stats_files = std::collections::HashMap::new();
     for output in &outputs {
         for (name, elem) in &output.series.series {
             if elem.values.is_empty() || series_files.contains_key(name) {
                 continue;
             }
-            let series_file = crate::utils::open_output_file(
-                output_path,
-                format!("{name}.csv").as_str(),
-                append,
-                format!(
-                    "{}{}{}{}{},time,value",
-                    additional_header,
-                    header_comma,
-                    if save_config { &config_csv_header } else { "" },
-                    if save_config { "," } else { "" },
-                    elem.headers.join(",")
-                )
-                .as_str(),
-            )?;
-            series_files.insert(name.clone(), series_file);
+            let header_common = format!(
+                "{}{}{}{}{},time,value",
+                additional_header,
+                header_comma,
+                if save_config { &config_csv_header } else { "" },
+                if save_config { "," } else { "" },
+                elem.headers.join(",")
+            );
+            series_files.insert(
+                name.clone(),
+                crate::utils::open_output_file(
+                    output_path,
+                    format!("{name}.csv").as_str(),
+                    append,
+                    format!("{},time,value", header_common).as_str(),
+                )?,
+            );
+            series_stats_files.insert(
+                name.clone(),
+                crate::utils::open_output_file(
+                    output_path,
+                    format!("{name}-stats.csv").as_str(),
+                    append,
+                    format!(
+                        "{},count,min,mean,max,stderr,p05,p25,p50,p75,p95",
+                        header_common
+                    )
+                    .as_str(),
+                )?,
+            );
         }
     }
 
@@ -418,6 +468,38 @@ pub fn save_outputs(
                         labels.join(","),
                         time,
                         value
+                    )?;
+                }
+            }
+        }
+
+        let stats_all = Stats::new(&output.series);
+        for (name, stats) in &stats_all.stats {
+            if let Some(series_stats_file) = series_stats_files.get_mut(name) {
+                for (label, samples) in stats {
+                    let percentiles = samples
+                        .percentiles
+                        .percentiles(&[0.05, 0.25, 0.50, 0.75, 0.95])
+                        .unwrap_or_default()
+                        .unwrap_or_default();
+                    writeln!(
+                        series_stats_file,
+                        "{}{}{}{}{},{},{},{},{},{},{}",
+                        additional_fields,
+                        header_comma,
+                        config_csv,
+                        config_comma,
+                        label,
+                        samples.summary.count(),
+                        samples.summary.min().unwrap_or_default(),
+                        samples.summary.mean().unwrap_or_default(),
+                        samples.summary.max().unwrap_or_default(),
+                        samples.summary.standard_error().unwrap_or_default(),
+                        percentiles
+                            .iter()
+                            .map(|x| x.to_string())
+                            .collect::<Vec<String>>()
+                            .join(",")
                     )?;
                 }
             }
@@ -508,6 +590,59 @@ mod tests {
 
         for single in output_series.series.values() {
             assert_eq!(10, single.values.len());
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_output_stats() -> anyhow::Result<()> {
+        let mut output_series = OutputSeries::new(std::collections::HashSet::new());
+
+        output_series.set_headers("my-metric-0", &[]);
+        output_series.set_headers("my-metric-1", &["x"]);
+        output_series.set_headers("my-metric-2", &["x", "y"]);
+
+        output_series.add("my-metric-0", vec![], 1.0, 1.1);
+        output_series.add("my-metric-1", vec!["a".to_string()], 2.0, 2.1);
+        output_series.add(
+            "my-metric-2",
+            vec!["a".to_string(), "b".to_string()],
+            3.0,
+            3.1,
+        );
+
+        output_series.enable();
+
+        for i in 0..10 {
+            output_series.add("my-metric-0", vec![], 1.0, i as f64);
+            output_series.add("my-metric-1", vec!["a".to_string()], 2.0, i as f64);
+            output_series.add(
+                "my-metric-2",
+                vec!["a".to_string(), "b".to_string()],
+                3.0,
+                i as f64,
+            );
+        }
+
+        let stats_all = Stats::new(&output_series);
+
+        for (metric, stats) in stats_all.stats {
+            println!("{}", metric);
+            for (label, samples) in stats {
+                let quarts = samples
+                    .percentiles
+                    .percentiles(&[0.75, 0.25, 0.5])
+                    .unwrap()
+                    .unwrap();
+                println!("{} {:?} {:?}", label, samples.summary, quarts);
+
+                assert_eq!(10, samples.summary.count());
+                assert_float_eq::assert_f64_near!(4.5, samples.summary.mean().unwrap());
+                assert_float_eq::assert_f64_near!(6.75, quarts[0]);
+                assert_float_eq::assert_f64_near!(2.25, quarts[1]);
+                assert_float_eq::assert_f64_near!(4.5, quarts[2]);
+            }
         }
 
         Ok(())
