@@ -31,7 +31,7 @@ primary = "num_repeaters"
 primary_label = "Chain size"
 secondaries = {"memory_qubits": "Q", "num_pairs": "P"}
 
-aggregates = {"mean": "Average", "p95": "95th percentile"}
+aggregates = {"mean": "Average", "p95": "95th percentile", "count": "Count"}
 
 for metric, ylabel in metrics.items():
     df = pd.read_csv(f"{DATA_DIR}/{metric}-stats.csv")
