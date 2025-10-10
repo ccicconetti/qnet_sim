@@ -4,11 +4,14 @@ import os
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
+from pathlib import Path
 
 DATA_DIR = os.environ.get("DATA_DIR", "data")
+RELATIVE_OUT_DIR = os.environ.get("RELATIVE_OUT_DIR", "plots")
 IMAGE_TYPE = os.environ.get("IMAGE_TYPE", "pdf")
 
 basename = os.path.basename(os.getcwd())
+Path(RELATIVE_OUT_DIR).mkdir(parents=True, exist_ok=True)
 
 pd.set_option("display.show_dimensions", False)
 pd.set_option("display.max_columns", None)
@@ -59,4 +62,6 @@ for metric, ylabel in metrics.items():
             ax.set_yscale("log")
         # plt.xticks(rotation=45)
         fig.suptitle(f"")
-        plt.savefig(f"{basename}-series-{metric}-{aggregate}.{IMAGE_TYPE}")
+        plt.savefig(
+            f"{RELATIVE_OUT_DIR}/{basename}-series-{metric}-{aggregate}.{IMAGE_TYPE}"
+        )
