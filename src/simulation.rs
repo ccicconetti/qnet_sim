@@ -274,6 +274,9 @@ impl Simulation {
             "epr_register_final_len",
             self.network.epr_register.len() as f64,
         );
+        if log::log_enabled!(log::Level::Debug) {
+            self.network.epr_register.dump();
+        }
 
         // return the simulation output
         let single = std::mem::take(&mut self.single);

@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: © 2025 Claudio Cicconetti <c.cicconetti@iit.cnr.it>
 // SPDX-License-Identifier: MIT
 
+use itertools::Itertools;
+
 const P1: f64 = 1.0_f64;
 const P2: f64 = 1.0_f64;
 const ETA: f64 = 1.0_f64;
@@ -99,6 +101,13 @@ impl EprRegister {
     /// Return true if the register is empty.
     pub fn is_empty(&self) -> bool {
         self.epr_pairs.is_empty()
+    }
+
+    /// Dump to stdout the content, for debugging purposes.
+    pub fn dump(&self) {
+        for (id, epr_pair) in self.epr_pairs.iter().sorted_by_key(|x| x.0) {
+            println!("{}: {:?}", id, epr_pair);
+        }
     }
 
     /// Create a new EPR pair with given characteristics. Return its identifier.
