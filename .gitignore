@@ -27,3 +27,4 @@ conf*.json
 docs/.$diagrams.drawio.bkp
 .DS_Store
 .venv
+settings.json
