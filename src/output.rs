@@ -379,6 +379,7 @@ pub fn save_outputs(
     additional_header: &str,
     additional_fields: &str,
     save_config: bool,
+    save_time_series: bool,
 ) -> anyhow::Result<()> {
     let header_comma = if additional_header.is_empty() {
         ""
@@ -416,15 +417,17 @@ pub fn save_outputs(
                 if save_config { "," } else { "" },
                 elem.headers.join(",")
             );
-            series_files.insert(
-                name.clone(),
-                crate::utils::open_output_file(
-                    output_path,
-                    format!("{name}.csv").as_str(),
-                    append,
-                    format!("{},time,value", header_common).as_str(),
-                )?,
-            );
+            if save_time_series {
+                series_files.insert(
+                    name.clone(),
+                    crate::utils::open_output_file(
+                        output_path,
+                        format!("{name}.csv").as_str(),
+                        append,
+                        format!("{},time,value", header_common).as_str(),
+                    )?,
+                );
+            }
             series_stats_files.insert(
                 name.clone(),
                 crate::utils::open_output_file(
@@ -455,20 +458,22 @@ pub fn save_outputs(
             output.scalar.to_csv()
         )?;
 
-        for (name, elem) in &output.series.series {
-            if let Some(series_file) = series_files.get_mut(name) {
-                for (labels, time, value) in &elem.values {
-                    writeln!(
-                        series_file,
-                        "{}{}{}{}{},{},{}",
-                        additional_fields,
-                        header_comma,
-                        config_csv,
-                        config_comma,
-                        labels.join(","),
-                        time,
-                        value
-                    )?;
+        if save_time_series {
+            for (name, elem) in &output.series.series {
+                if let Some(series_file) = series_files.get_mut(name) {
+                    for (labels, time, value) in &elem.values {
+                        writeln!(
+                            series_file,
+                            "{}{}{}{}{},{},{}",
+                            additional_fields,
+                            header_comma,
+                            config_csv,
+                            config_comma,
+                            labels.join(","),
+                            time,
+                            value
+                        )?;
+                    }
                 }
             }
         }

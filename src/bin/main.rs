@@ -43,6 +43,9 @@ struct Args {
     /// Add the configuration values to the CSV output file.
     #[arg(long)]
     save_config: bool,
+    /// Save the samples of time series.
+    #[arg(long)]
+    save_time_series: bool,
 }
 
 #[tokio::main]
@@ -151,6 +154,7 @@ async fn main() -> anyhow::Result<()> {
             &args.additional_header,
             &args.additional_fields,
             args.save_config,
+            args.save_time_series,
         )?;
     }
 
