@@ -172,12 +172,11 @@ impl Node {
         let this_node_id = self.node_id;
         let occupancy = {
             let nic = self.get_nic(peer_node_id, &role);
-            let (epr_pair_id, _added) = nic.add_epr_pair(now, epr_pair_id);
-            if let Some(epr_pair_id) = epr_pair_id {
+            if let Some(epr_pair_to_be_freed_id) = nic.add_epr_pair(now, epr_pair_id) {
                 events.push(Event::new(
                     0.0,
                     EventType::NetworkEvent(NetworkEventData::EprFree(EprFreeData {
-                        epr_pair_id,
+                        epr_pair_id: epr_pair_to_be_freed_id,
                         node_id: this_node_id,
                     })),
                 ));

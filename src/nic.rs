@@ -196,9 +196,11 @@ impl Nic {
     /// Never overwrites currently in-use memory cells.
     /// Do nothing if all the memory cells are current in-use.
     ///
-    /// Return the identifier of the overwritten EPR pair (if that was the case)
-    /// and a Boolean flag equal to true only if the EPR pair was added.
-    pub fn add_epr_pair(&mut self, now: u64, epr_pair_id: u64) -> (Option<u64>, bool) {
+    /// Return the identifier of the EPR pair to be freed:
+    /// - the new EPR, if all the cells are busy;
+    /// - the oldest EPR, is there is a non-busy cell;
+    /// - none, if the EPR there was an empty cell.
+    pub fn add_epr_pair(&mut self, now: u64, epr_pair_id: u64) -> Option<u64> {
         let first_empty = self
             .memory_cells
             .iter()
@@ -208,13 +210,13 @@ impl Nic {
 
         if let Some(index) = first_empty {
             self.memory_cells[index] = MemoryCell::new(now, epr_pair_id);
-            (None, true)
+            None
         } else if let Some(index) = self.oldest_valid() {
             let overwritten_id = self.memory_cells[index].epr_pair_id().unwrap();
             self.memory_cells[index] = MemoryCell::new(now, epr_pair_id);
-            (Some(overwritten_id), true)
+            Some(overwritten_id)
         } else {
-            (None, false)
+            Some(epr_pair_id)
         }
     }
 
@@ -414,7 +416,7 @@ mod tests {
         assert_float_eq::assert_f64_near!(1.0, nic.occupancy());
 
         // Try to add a new pair.
-        assert!(!nic.add_epr_pair(999, 999).1);
+        assert_eq!(999, nic.add_epr_pair(999, 999).unwrap());
 
         // Cannot use cells already used.
         for i in 0..10 {
@@ -426,7 +428,7 @@ mod tests {
 
         // New pairs can be added, they will overwrite the only valid one.
         for i in 0..100 {
-            assert!(nic.add_epr_pair(1000 + i, 2000 + i).1);
+            assert!(nic.add_epr_pair(1000 + i, 2000 + i).is_some() || i == 0);
         }
 
         // Consume all the EPR pairs.
