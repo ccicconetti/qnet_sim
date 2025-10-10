@@ -10,4 +10,4 @@ if [ "$PRINT_ONLY" != "" ] ; then
   exit 0
 fi
 
-wget http://turig.iit.cnr.it/~claudio/public/edgeless/cnr-experiments/$experiment-$sub.tgz -O- | tar zx
+wget http://turig.iit.cnr.it/~claudio/public/qnet_ll_sim/$experiment-$sub.tgz -O- | tar zx
