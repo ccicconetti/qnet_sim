@@ -26,3 +26,4 @@ conf*.json
 *.csv
 docs/.$diagrams.drawio.bkp
 .DS_Store
+.venv
