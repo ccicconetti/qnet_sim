@@ -30,6 +30,8 @@ metrics = {
     "local_epr_misses": "Local EPR misses",
 }
 
+ylog_metrics = {"epr_register_final_len", "epr_frees", "local_epr_misses"}
+
 primary = "num_repeaters"
 primary_label = "Chain size"
 secondaries = {"memory_qubits": "Q", "num_pairs": "P"}
@@ -56,7 +58,8 @@ for metric, ylabel in metrics.items():
     if legend:
         legend.set_title(title="")
     # ax.set_ylim(bottom=0.01, top=10)
-    # ax.set_yscale("log")
+    if metric in ylog_metrics:
+        ax.set_yscale("log")
     # plt.xticks(rotation=45)
     fig.suptitle(f"")
     plt.savefig(f"{RELATIVE_OUT_DIR}/{basename}-scalar-{metric}.{IMAGE_TYPE}")
