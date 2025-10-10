@@ -52,10 +52,10 @@ async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
     // If requested, save a template configuration file and quit.
-    let conf_path = std::path::Path::new("conf.json");
+    let conf_path = std::path::Path::new(&args.conf);
     if args.template {
         if conf_path.exists() {
-            log::warn!("File {:#?} exists and will not be overwritten", conf_path);
+            println!("File {:#?} exists and will not be overwritten", conf_path);
         } else {
             std::fs::write(
                 conf_path,
@@ -81,7 +81,7 @@ async fn main() -> anyhow::Result<()> {
         "Configuration file {:#?} does not exist",
         conf_path
     );
-    let conf_file = std::fs::File::open(args.conf)?;
+    let conf_file = std::fs::File::open(conf_path)?;
     let reader = std::io::BufReader::new(conf_file);
     let user_config: UserConfig = serde_json::from_reader(reader)?;
 
