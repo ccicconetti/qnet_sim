@@ -10,6 +10,8 @@ pub fn physical_topology_2_2() -> crate::physical_topology::PhysicalTopology {
             ground_to_orbit_distance: 1.0,
             num_orbits: 2,
             orbit_length: 2,
+            elevation_min: 10.0,
+            elevation_max: 60.0,
         },
         crate::physical_topology::NodeWeight {
             node_type: crate::physical_topology::NodeType::SAT,
@@ -34,6 +36,7 @@ pub fn physical_topology_2_2() -> crate::physical_topology::PhysicalTopology {
             capacity: 0.0,
         },
         crate::physical_topology::StaticFidelities::default(),
+        42,
     )
     .expect("invalid physical topology")
 }
@@ -107,6 +110,8 @@ mod tests {
                     orbit_to_orbit_distance: 3000000.0,
                     ground_to_orbit_distance: 1000000.0,
                     num_repeaters,
+                    elevation_min: 10.0,
+                    elevation_max: 60.0,
                 },
                 sat_weight: crate::physical_topology::NodeWeight {
                     node_type: crate::physical_topology::NodeType::SAT,

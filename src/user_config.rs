@@ -76,6 +76,7 @@ pub enum PhysicalTopology {
 impl PhysicalTopology {
     pub fn to_physical_topology(
         &self,
+        seed: u64,
     ) -> anyhow::Result<crate::physical_topology::PhysicalTopology> {
         match self {
             PhysicalTopology::ConfGridStatic(conf) => {
@@ -84,6 +85,7 @@ impl PhysicalTopology {
                     conf.sat_weight.clone(),
                     conf.ogs_weight.clone(),
                     conf.fidelities.clone(),
+                    seed,
                 )
             }
             PhysicalTopology::ConfChainStatic(conf) => {
@@ -92,6 +94,7 @@ impl PhysicalTopology {
                     conf.sat_weight.clone(),
                     conf.ogs_weight.clone(),
                     conf.fidelities.clone(),
+                    seed,
                 )
             }
         }

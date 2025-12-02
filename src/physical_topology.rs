@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: © 2025 Claudio Cicconetti <c.cicconetti@iit.cnr.it>
 // SPDX-License-Identifier: MIT
 
+use rand::Rng;
+use rand::SeedableRng;
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum NodeType {
     /// Satellite node.
@@ -127,6 +130,8 @@ impl NodeWeight {
 pub struct EdgeWeight {
     /// Distance between two nodes, in m.
     distance: f64,
+    /// Elevation angle, in degrees.
+    elevation: f64,
 }
 
 impl std::fmt::Display for EdgeWeight {
@@ -139,12 +144,14 @@ impl petgraph::algo::FloatMeasure for EdgeWeight {
     fn zero() -> Self {
         Self {
             distance: f64::zero(),
+            elevation: f64::zero(),
         }
     }
 
     fn infinite() -> Self {
         Self {
             distance: f64::infinite(),
+            elevation: f64::zero(),
         }
     }
 }
@@ -155,6 +162,7 @@ impl std::ops::Add for EdgeWeight {
     fn add(self, rhs: Self) -> Self::Output {
         EdgeWeight {
             distance: self.distance + rhs.distance,
+            elevation: 0.0,
         }
     }
 }
@@ -219,6 +227,10 @@ pub struct GridParams {
     pub num_orbits: u32,
     /// Number of satellites in each orbit.
     pub orbit_length: u32,
+    /// Minimum eleveation, in degrees.
+    pub elevation_min: f64,
+    /// Maximum elevation, in degrees.
+    pub elevation_max: f64,
 }
 
 impl Default for GridParams {
@@ -228,6 +240,8 @@ impl Default for GridParams {
             ground_to_orbit_distance: 1000000.0,
             num_orbits: 3,
             orbit_length: 4,
+            elevation_min: 10.0,
+            elevation_max: 60.0,
         }
     }
 }
@@ -275,6 +289,10 @@ pub struct ChainParams {
     pub ground_to_orbit_distance: f64,
     /// Number of satellite repeaters.
     pub num_repeaters: u32,
+    /// Minimum eleveation, in degrees.
+    pub elevation_min: f64,
+    /// Maximum elevation, in degrees.
+    pub elevation_max: f64,
 }
 
 impl Default for ChainParams {
@@ -283,6 +301,8 @@ impl Default for ChainParams {
             orbit_to_orbit_distance: 3000000.0,
             ground_to_orbit_distance: 1000000.0,
             num_repeaters: 1,
+            elevation_min: 10.0,
+            elevation_max: 60.0,
         }
     }
 }
@@ -363,7 +383,10 @@ impl PhysicalTopology {
         sat_weight: NodeWeight,
         ogs_weight: NodeWeight,
         fidelities: StaticFidelities,
+        seed: u64,
     ) -> anyhow::Result<Self> {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+
         grid_params.valid()?;
         sat_weight.valid()?;
         assert!(sat_weight.node_type == NodeType::SAT);
@@ -386,8 +409,10 @@ impl PhysicalTopology {
         }
 
         // Add orbit-to-orbit edges.
+
         let orbit_weight = EdgeWeight {
             distance: grid_params.orbit_to_orbit_distance,
+            elevation: rng.gen_range(grid_params.elevation_min..=grid_params.elevation_max),
         };
         for i in 0..grid_params.num_orbits {
             for j in 0..grid_params.orbit_length {
@@ -421,6 +446,7 @@ impl PhysicalTopology {
         // Add ground-to-orbit edges.
         let ground_weight = EdgeWeight {
             distance: grid_params.ground_to_orbit_distance,
+            elevation: rng.gen_range(grid_params.elevation_min..=grid_params.elevation_max),
         };
         for i in 0..=grid_params.num_orbits {
             for j in 0..grid_params.orbit_length {
@@ -469,7 +495,10 @@ impl PhysicalTopology {
         sat_weight: NodeWeight,
         ogs_weight: NodeWeight,
         fidelities: StaticFidelities,
+        seed: u64,
     ) -> anyhow::Result<Self> {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+
         chain_params.valid()?;
         sat_weight.valid()?;
         assert!(sat_weight.node_type == NodeType::SAT);
@@ -501,6 +530,8 @@ impl PhysicalTopology {
                     0.into(),
                     EdgeWeight {
                         distance: chain_params.ground_to_orbit_distance,
+                        elevation: rng
+                            .gen_range(chain_params.elevation_min..=chain_params.elevation_max),
                     },
                 );
             }
@@ -513,6 +544,8 @@ impl PhysicalTopology {
                     1.into(),
                     EdgeWeight {
                         distance: chain_params.ground_to_orbit_distance,
+                        elevation: rng
+                            .gen_range(chain_params.elevation_min..=chain_params.elevation_max),
                     },
                 );
             } else {
@@ -522,6 +555,8 @@ impl PhysicalTopology {
                     (ndx + 1).into(),
                     EdgeWeight {
                         distance: chain_params.orbit_to_orbit_distance,
+                        elevation: rng
+                            .gen_range(chain_params.elevation_min..=chain_params.elevation_max),
                     },
                 );
             }
@@ -671,6 +706,7 @@ impl PhysicalTopology {
                 *v,
                 EdgeWeight {
                     distance: *distance,
+                    elevation: 42.0,
                 },
             )
         }));
@@ -754,10 +790,13 @@ mod tests {
                 ground_to_orbit_distance: 1000.0,
                 num_orbits: 0,
                 orbit_length: 1,
+                elevation_min: 10.0,
+                elevation_max: 60.0
             },
             NodeWeight::default_sat(),
             NodeWeight::default_ogs(),
             StaticFidelities::default(),
+            42
         )
         .is_err());
         assert!(PhysicalTopology::from_grid_static(
@@ -766,10 +805,13 @@ mod tests {
                 ground_to_orbit_distance: 1000.0,
                 num_orbits: 1,
                 orbit_length: 0,
+                elevation_min: 10.0,
+                elevation_max: 60.0
             },
             NodeWeight::default_sat(),
             NodeWeight::default_ogs(),
             StaticFidelities::default(),
+            42,
         )
         .is_err());
         assert!(PhysicalTopology::from_grid_static(
@@ -778,10 +820,13 @@ mod tests {
                 ground_to_orbit_distance: 1000.0,
                 num_orbits: 1,
                 orbit_length: 1,
+                elevation_min: 10.0,
+                elevation_max: 60.0
             },
             NodeWeight::default_sat(),
             NodeWeight::default_ogs(),
             StaticFidelities::default(),
+            42,
         )
         .is_err());
         assert!(PhysicalTopology::from_grid_static(
@@ -790,10 +835,13 @@ mod tests {
                 ground_to_orbit_distance: -1.0,
                 num_orbits: 1,
                 orbit_length: 1,
+                elevation_min: 10.0,
+                elevation_max: 60.0
             },
             NodeWeight::default_sat(),
             NodeWeight::default_ogs(),
             StaticFidelities::default(),
+            42,
         )
         .is_err());
 
@@ -804,10 +852,13 @@ mod tests {
                 ground_to_orbit_distance: 1000.0,
                 num_orbits: 1,
                 orbit_length: 1,
+                elevation_min: 10.0,
+                elevation_max: 60.0,
             },
             NodeWeight::default_sat(),
             NodeWeight::default_ogs(),
             StaticFidelities::default(),
+            42,
         )
         .unwrap();
         assert_eq!((0..1).collect::<Vec<u32>>(), graph.sat_indices());
@@ -820,10 +871,13 @@ mod tests {
                 ground_to_orbit_distance: 1000.0,
                 num_orbits: 1,
                 orbit_length: 2,
+                elevation_min: 10.0,
+                elevation_max: 60.0,
             },
             NodeWeight::default_sat(),
             NodeWeight::default_ogs(),
             StaticFidelities::default(),
+            42,
         )
         .unwrap();
         assert_eq!((0..2).collect::<Vec<u32>>(), graph.sat_indices());
@@ -836,10 +890,13 @@ mod tests {
                 ground_to_orbit_distance: 1000.0,
                 num_orbits: 2,
                 orbit_length: 1,
+                elevation_min: 10.0,
+                elevation_max: 60.0,
             },
             NodeWeight::default_sat(),
             NodeWeight::default_ogs(),
             StaticFidelities::default(),
+            42,
         )
         .unwrap();
         assert_eq!((0..2).collect::<Vec<u32>>(), graph.sat_indices());
@@ -852,10 +909,13 @@ mod tests {
                 ground_to_orbit_distance: 1000.0,
                 num_orbits: 2,
                 orbit_length: 2,
+                elevation_min: 10.0,
+                elevation_max: 60.0,
             },
             NodeWeight::default_sat(),
             NodeWeight::default_ogs(),
             StaticFidelities::default(),
+            42,
         )
         .unwrap();
         assert_eq!((0..4).collect::<Vec<u32>>(), graph.sat_indices());
@@ -868,10 +928,13 @@ mod tests {
                 ground_to_orbit_distance: 1000.0,
                 num_orbits: 3,
                 orbit_length: 4,
+                elevation_min: 10.0,
+                elevation_max: 60.0,
             },
             NodeWeight::default_sat(),
             NodeWeight::default_ogs(),
             StaticFidelities::default(),
+            42,
         )
         .unwrap();
 
@@ -895,10 +958,13 @@ mod tests {
                 orbit_to_orbit_distance: 3000.0,
                 ground_to_orbit_distance: 1000.0,
                 num_repeaters: 0,
+                elevation_min: 10.0,
+                elevation_max: 60.0
             },
             NodeWeight::default_sat(),
             NodeWeight::default_ogs(),
             StaticFidelities::default(),
+            42,
         )
         .is_err());
 
@@ -908,10 +974,13 @@ mod tests {
                 orbit_to_orbit_distance: 3000.0,
                 ground_to_orbit_distance: 1000.0,
                 num_repeaters: 4,
+                elevation_min: 10.0,
+                elevation_max: 60.0,
             },
             NodeWeight::default_sat(),
             NodeWeight::default_ogs(),
             StaticFidelities::default(),
+            42,
         )
         .unwrap();
 

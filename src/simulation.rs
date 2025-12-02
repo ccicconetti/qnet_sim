@@ -93,7 +93,7 @@ impl Simulation {
         let physical_topology = config
             .user_config
             .physical_topology
-            .to_physical_topology()?;
+            .to_physical_topology(config.seed)?;
 
         if save_to_dot {
             save_to_dot_file(physical_topology.graph(), "physical_topology.dot")?;
