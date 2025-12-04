@@ -37,6 +37,8 @@ impl std::fmt::Display for NodeType {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct NodeWeight {
+    /// Node label.
+    pub label: String,
     /// Node type.
     pub node_type: NodeType,
     /// Number of memory qubits.
@@ -60,7 +62,7 @@ pub struct NodeWeight {
 
 impl std::fmt::Display for NodeWeight {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.node_type)
+        write!(f, "{}", self.label)
     }
 }
 
@@ -73,6 +75,7 @@ impl Default for NodeWeight {
 impl NodeWeight {
     pub fn default_sat() -> Self {
         Self {
+            label: String::default(),
             node_type: NodeType::SAT,
             memory_qubits: 1,
             decay_rate: 0.0,
@@ -87,6 +90,7 @@ impl NodeWeight {
 
     pub fn default_ogs() -> Self {
         Self {
+            label: String::default(),
             node_type: NodeType::OGS,
             memory_qubits: 1,
             decay_rate: 0.0,
@@ -97,6 +101,12 @@ impl NodeWeight {
             transmitters: 0,
             capacity: 0.0,
         }
+    }
+
+    pub fn clone_with_label(&self, label: String) -> Self {
+        let mut clone = self.clone();
+        clone.label = label;
+        clone
     }
 
     fn valid(&self) -> anyhow::Result<()> {
@@ -246,14 +256,14 @@ impl PhysicalTopology {
 
         // Add SAT nodes.
         let num_sat = grid_params.orbit_length * grid_params.num_orbits;
-        for _ in 0..num_sat {
-            graph.add_node(sat_weight.clone());
+        for cnt in 0..num_sat {
+            graph.add_node(sat_weight.clone_with_label(format!("sat#{}", cnt)));
         }
 
         // Add OGS nodes.
         let num_ogs = grid_params.orbit_length * (1 + grid_params.num_orbits);
-        for _ in 0..num_ogs {
-            graph.add_node(ogs_weight.clone());
+        for cnt in 0..num_ogs {
+            graph.add_node(ogs_weight.clone_with_label(format!("ogs#{}", cnt)));
         }
 
         // Add orbit-to-orbit edges.
@@ -357,13 +367,12 @@ impl PhysicalTopology {
         let mut graph = petgraph::Graph::new_undirected();
 
         // Add OGS nodes.
-        for _ in 0..2 {
-            graph.add_node(ogs_weight.clone());
-        }
+        graph.add_node(ogs_weight.clone_with_label(String::from("alice")));
+        graph.add_node(ogs_weight.clone_with_label(String::from("bob")));
 
         // Add SAT nodes.
-        for _ in 0..chain_params.num_repeaters {
-            graph.add_node(sat_weight.clone());
+        for cnt in 0..chain_params.num_repeaters {
+            graph.add_node(sat_weight.clone_with_label(format!("rep#{}", cnt)));
         }
 
         // Add edges.

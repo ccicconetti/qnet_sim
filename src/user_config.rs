@@ -3,6 +3,7 @@
 
 pub fn default_sat_weight() -> crate::physical_topology::NodeWeight {
     crate::physical_topology::NodeWeight {
+        label: String::default(),
         node_type: crate::physical_topology::NodeType::SAT,
         memory_qubits: 20,
         decay_rate: 1.0,
@@ -17,6 +18,7 @@ pub fn default_sat_weight() -> crate::physical_topology::NodeWeight {
 
 pub fn default_ogs_weight() -> crate::physical_topology::NodeWeight {
     crate::physical_topology::NodeWeight {
+        label: String::default(),
         node_type: crate::physical_topology::NodeType::OGS,
         memory_qubits: 100,
         decay_rate: 1.0,

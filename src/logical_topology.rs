@@ -11,12 +11,15 @@ pub enum PhysicalToLogicalPolicy {
     RandomGreedy,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialOrd, PartialEq)]
-pub struct NodeWeight {}
+#[derive(Debug, Clone, Default, PartialOrd, PartialEq)]
+pub struct NodeWeight {
+    /// Node label.
+    pub label: String,
+}
 
 impl std::fmt::Display for NodeWeight {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "")
+        write!(f, "{}", self.label)
     }
 }
 
@@ -98,6 +101,11 @@ pub struct LogicalTopology {
 impl LogicalTopology {
     pub fn graph(&self) -> &Graph {
         &self.graph
+    }
+
+    /// Return the label of a given node, from its index.
+    pub fn node_label(&self, node_ndx: u32) -> &str {
+        &self.graph[petgraph::graph::NodeIndex::from(node_ndx)].label
     }
 
     /// Return the path between `src` and `dst` in the logical topology.
@@ -199,8 +207,10 @@ fn physical_to_logical_random_greedy(
     let mut logical_graph = Graph::new();
 
     // Add all nodes from the physical topology.
-    for _ in 0..physical_graph.node_count() {
-        logical_graph.add_node(NodeWeight {});
+    for node_weight in physical_graph.node_weights() {
+        logical_graph.add_node(NodeWeight {
+            label: node_weight.label.clone(),
+        });
     }
 
     // Save OGS nodes.
@@ -513,9 +523,22 @@ mod tests {
     use rand::SeedableRng;
 
     use crate::logical_topology::{is_valid, LogicalTopology, PhysicalToLogicalPolicy};
+    use crate::physical_topology::PhysicalTopology;
 
     use super::{find_paths, find_possible_logical_edges, physical_to_logical_random_greedy};
     use crate::tests::physical_topology_2_2;
+
+    fn get_physical_logical_topology_2_2() -> (PhysicalTopology, LogicalTopology) {
+        let physical_topology = physical_topology_2_2();
+        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+        let logical_topology = LogicalTopology::from_physical_topology(
+            &PhysicalToLogicalPolicy::RandomGreedy,
+            &physical_topology,
+            &mut rng,
+        )
+        .expect("could not create the logical topology");
+        (physical_topology, logical_topology)
+    }
 
     #[test]
     fn test_logical_topology_find_possible_logical_edges() {
@@ -537,15 +560,7 @@ mod tests {
 
     #[test]
     fn test_logical_topology_path() {
-        let physical_topology = physical_topology_2_2();
-        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-        let logical_topology = LogicalTopology::from_physical_topology(
-            &PhysicalToLogicalPolicy::RandomGreedy,
-            &physical_topology,
-            &mut rng,
-        )
-        .expect("could not create the logical topology");
-
+        let (physical_topology, logical_topology) = get_physical_logical_topology_2_2();
         for src in physical_topology.ogs_indices() {
             for dst in physical_topology.ogs_indices() {
                 let path = logical_topology.path(src as u32, dst as u32);
@@ -560,6 +575,20 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_logical_topology_node_label() {
+        let (_physical_topology, logical_topology) = get_physical_logical_topology_2_2();
+        let expected_labels = vec![
+            "sat#0", "sat#1", "sat#2", "sat#3", "ogs#0", "ogs#1", "ogs#2", "ogs#3", "ogs#4",
+            "ogs#5",
+        ];
+        let mut actual_labels = vec![];
+        for node_ndx in 0..logical_topology.graph.node_count() as u32 {
+            actual_labels.push(logical_topology.node_label(node_ndx));
+        }
+        assert_eq!(expected_labels, actual_labels);
     }
 
     #[test]

@@ -14,6 +14,7 @@ pub fn physical_topology_2_2() -> crate::physical_topology::PhysicalTopology {
             elevation_max: 60.0,
         },
         crate::physical_topology::NodeWeight {
+            label: String::default(),
             node_type: crate::physical_topology::NodeType::SAT,
             memory_qubits: 10,
             decay_rate: 1.0,
@@ -25,6 +26,7 @@ pub fn physical_topology_2_2() -> crate::physical_topology::PhysicalTopology {
             capacity: 1.0,
         },
         crate::physical_topology::NodeWeight {
+            label: String::default(),
             node_type: crate::physical_topology::NodeType::OGS,
             memory_qubits: 20,
             decay_rate: 1.0,
@@ -114,6 +116,7 @@ mod tests {
                     elevation_max: 60.0,
                 },
                 sat_weight: crate::physical_topology::NodeWeight {
+                    label: String::default(),
                     node_type: crate::physical_topology::NodeType::SAT,
                     memory_qubits,
                     decay_rate: 1.0,
@@ -125,6 +128,7 @@ mod tests {
                     capacity: 1000.0,
                 },
                 ogs_weight: crate::physical_topology::NodeWeight {
+                    label: String::default(),
                     node_type: crate::physical_topology::NodeType::OGS,
                     memory_qubits,
                     decay_rate: 1.0,
