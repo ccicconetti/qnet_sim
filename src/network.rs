@@ -52,6 +52,8 @@ pub struct Network {
     pub epr_register: crate::epr_register::EprRegister,
     /// The physical topology.
     pub physical_topology: crate::physical_topology::PhysicalTopology,
+    /// The fidelity computer.
+    pub fidelity_computer: Box<dyn crate::physical_topology::FidelityComputer>,
     /// The logical topology.
     pub logical_topology: std::rc::Rc<crate::logical_topology::LogicalTopology>,
     /// Pseudo-random number generator.
@@ -62,6 +64,7 @@ impl Network {
     /// Create a network from the logical topology.
     pub fn new(
         physical_topology: crate::physical_topology::PhysicalTopology,
+        fidelity_computer: Box<dyn crate::physical_topology::FidelityComputer>,
         logical_topology: std::rc::Rc<crate::logical_topology::LogicalTopology>,
         init_seed: u64,
     ) -> Self {
@@ -128,6 +131,7 @@ impl Network {
             epr_generators,
             epr_register,
             physical_topology,
+            fidelity_computer,
             logical_topology,
             rng: rand::rngs::StdRng::seed_from_u64(next_seed),
         }
@@ -198,7 +202,8 @@ impl Network {
                 let mut samples = vec![];
 
                 // Create a new EPR pair.
-                if let Ok(fidelity) = self.physical_topology.fidelity(
+                if let Ok(fidelity) = self.fidelity_computer.fidelity(
+                    &self.physical_topology,
                     data.tx_node_id,
                     data.master_node_id,
                     data.slave_node_id,
@@ -402,7 +407,12 @@ mod tests {
     #[test]
     fn test_network_from_logical_topology() {
         let (physical_topology, logical_topology) = crate::tests::logical_topology_2_2();
-        let network = Network::new(physical_topology, std::rc::Rc::new(logical_topology), 42);
+        let network = Network::new(
+            physical_topology,
+            Box::new(crate::physical_topology::StaticFidelities::default()),
+            std::rc::Rc::new(logical_topology),
+            42,
+        );
         assert_eq!(10, network.nodes.len());
     }
 

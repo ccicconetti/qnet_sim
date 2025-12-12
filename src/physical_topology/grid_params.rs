@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: © 2025 Claudio Cicconetti <c.cicconetti@iit.cnr.it>
 // SPDX-License-Identifier: MIT
 
+use rand::Rng;
+use rand::SeedableRng;
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct GridParams {
     /// Distance between two neighbor satellites, in m.
@@ -40,8 +43,8 @@ fn err_if_not_empty(errors: &[String]) -> anyhow::Result<()> {
     Ok(())
 }
 
-impl GridParams {
-    pub fn valid(&self) -> anyhow::Result<()> {
+impl super::PhysicalTopologyParams for GridParams {
+    fn valid(&self) -> anyhow::Result<()> {
         let mut errors = vec![];
         if self.orbit_to_orbit_distance < 0.0 {
             errors.push(format!(
@@ -62,5 +65,113 @@ impl GridParams {
             errors.push(String::from("vanishing orbit length"));
         }
         err_if_not_empty(&errors)
+    }
+
+    /// Build a physical topology consisting of a grid representing a number of
+    /// parallel orbits, with inter-orbit communications. The grid wraps around
+    /// at the orbits' end.
+    ///
+    /// Exactly one station is assigned to each square of 4 satellites (if in
+    /// the middle) or pair of satellites (if at the top/bottom).
+    fn make_topology(
+        &self,
+        sat_weight: super::NodeWeight,
+        ogs_weight: super::NodeWeight,
+        seed: u64,
+    ) -> anyhow::Result<super::PhysicalTopology> {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+
+        self.valid()?;
+        sat_weight.valid()?;
+        assert!(sat_weight.node_type == super::NodeType::SAT);
+        ogs_weight.valid()?;
+        assert!(ogs_weight.node_type == super::NodeType::OGS);
+
+        let mut graph = petgraph::Graph::new_undirected();
+
+        // Add SAT nodes.
+        let num_sat = self.orbit_length * self.num_orbits;
+        for cnt in 0..num_sat {
+            graph.add_node(sat_weight.clone_with_label(format!("sat#{}", cnt)));
+        }
+
+        // Add OGS nodes.
+        let num_ogs = self.orbit_length * (1 + self.num_orbits);
+        for cnt in 0..num_ogs {
+            graph.add_node(ogs_weight.clone_with_label(format!("ogs#{}", cnt)));
+        }
+
+        // Add orbit-to-orbit edges.
+
+        let orbit_weight = super::EdgeWeight {
+            distance: self.orbit_to_orbit_distance,
+            elevation: rng.gen_range(self.elevation_min..=self.elevation_max),
+        };
+        for i in 0..self.num_orbits {
+            for j in 0..self.orbit_length {
+                let ndx = j + i * self.orbit_length;
+                assert!(ndx < num_sat);
+                let mut others = std::collections::HashSet::new();
+                // Right
+                others.insert(i * self.orbit_length + (j + 1) % self.orbit_length);
+                // Left
+                others.insert(
+                    i * self.orbit_length + (self.orbit_length + j - 1) % self.orbit_length,
+                );
+                // Up
+                if i != 0 {
+                    others.insert(ndx - self.orbit_length);
+                }
+                // Down
+                if i != (self.num_orbits - 1) {
+                    others.insert(ndx + self.orbit_length);
+                }
+                for other_ndx in others {
+                    assert!(other_ndx < num_sat);
+                    if !graph.contains_edge(other_ndx.into(), ndx.into()) {
+                        graph.add_edge(ndx.into(), other_ndx.into(), orbit_weight);
+                    }
+                }
+            }
+        }
+
+        // Add ground-to-orbit edges.
+        let ground_weight = super::EdgeWeight {
+            distance: self.ground_to_orbit_distance,
+            elevation: rng.gen_range(self.elevation_min..=self.elevation_max),
+        };
+        for i in 0..=self.num_orbits {
+            for j in 0..self.orbit_length {
+                let ndx = num_sat + j + i * self.orbit_length;
+                assert!(ndx < num_sat + num_ogs);
+                let mut sats = std::collections::HashSet::new();
+                // Up
+                if i != 0 {
+                    sats.insert((i - 1) * self.orbit_length + j);
+                    sats.insert(
+                        (i - 1) * self.orbit_length
+                            + (self.orbit_length + j - 1) % self.orbit_length,
+                    );
+                }
+                // Down
+                if i != self.num_orbits {
+                    sats.insert(i * self.orbit_length + j);
+                    sats.insert(
+                        i * self.orbit_length + (self.orbit_length + j - 1) % self.orbit_length,
+                    );
+                }
+                for sat_ndx in sats {
+                    assert!(sat_ndx < num_sat);
+                    if !graph.contains_edge(sat_ndx.into(), ndx.into()) {
+                        graph.add_edge(ndx.into(), sat_ndx.into(), ground_weight);
+                    }
+                }
+            }
+        }
+
+        Ok(super::PhysicalTopology {
+            graph,
+            paths: std::collections::HashMap::new(),
+        })
     }
 }

@@ -82,6 +82,7 @@ impl Simulation {
         };
         crate::network::Network::new(
             physical_topology,
+            crate::user_config::FidelityComputer::make(&config.user_config.fidelity_computer),
             std::rc::Rc::new(logical_topology),
             config.seed,
         )
@@ -90,10 +91,7 @@ impl Simulation {
     pub fn new(config: crate::config::Config, save_to_dot: bool) -> anyhow::Result<Self> {
         anyhow::ensure!(config.user_config.duration > 0.0, "vanishing duration");
 
-        let physical_topology = config
-            .user_config
-            .physical_topology
-            .to_physical_topology(config.seed)?;
+        let physical_topology = config.user_config.physical_topology.make(config.seed)?;
 
         if save_to_dot {
             save_to_dot_file(physical_topology.graph(), "physical_topology.dot")?;
@@ -164,13 +162,6 @@ impl Simulation {
         let conf = &self.config.user_config;
         let conf_100th = conf.duration / 100.0;
 
-        // create applications
-        create_applications(
-            self.config.seed,
-            &self.config.user_config.applications,
-            &mut self.network,
-        );
-
         // push initial events
         self.events
             .push(Event::new(conf.warmup_period, EventType::WarmupPeriodEnd));
@@ -181,6 +172,12 @@ impl Simulation {
         let logical_topology_found = if initial_network_events.is_empty() {
             0.0_f64
         } else {
+            create_applications(
+                self.config.seed,
+                &self.config.user_config.applications,
+                &mut self.network,
+            );
+
             1.0_f64
         };
         self.update(initial_network_events, vec![]);

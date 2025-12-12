@@ -1,20 +1,21 @@
 // SPDX-FileCopyrightText: © 2025 Claudio Cicconetti <c.cicconetti@iit.cnr.it>
 // SPDX-License-Identifier: MIT
 
+use super::physical_topology::PhysicalTopologyParams;
 use rand::SeedableRng;
 
 pub fn physical_topology_2_2() -> crate::physical_topology::PhysicalTopology {
-    crate::physical_topology::PhysicalTopology::from_grid_static(
-        crate::physical_topology::GridParams {
-            orbit_to_orbit_distance: 1.0,
-            ground_to_orbit_distance: 1.0,
-            num_orbits: 2,
-            orbit_length: 2,
-            elevation_min: 10.0,
-            elevation_max: 60.0,
-        },
+    crate::physical_topology::GridParams {
+        orbit_to_orbit_distance: 1.0,
+        ground_to_orbit_distance: 1.0,
+        num_orbits: 2,
+        orbit_length: 2,
+        elevation_min: 10.0,
+        elevation_max: 60.0,
+    }
+    .make_topology(
         crate::physical_topology::NodeWeight {
-            label: String::default(),
+            label: None,
             node_type: crate::physical_topology::NodeType::SAT,
             memory_qubits: 10,
             decay_rate: 1.0,
@@ -26,7 +27,7 @@ pub fn physical_topology_2_2() -> crate::physical_topology::PhysicalTopology {
             capacity: 1.0,
         },
         crate::physical_topology::NodeWeight {
-            label: String::default(),
+            label: None,
             node_type: crate::physical_topology::NodeType::OGS,
             memory_qubits: 20,
             decay_rate: 1.0,
@@ -37,7 +38,6 @@ pub fn physical_topology_2_2() -> crate::physical_topology::PhysicalTopology {
             transmitters: 0,
             capacity: 0.0,
         },
-        crate::physical_topology::StaticFidelities::default(),
         42,
     )
     .expect("invalid physical topology")
@@ -107,7 +107,7 @@ mod tests {
             warmup_period: 0.0,
             series_ignore: std::collections::HashSet::new(),
             sections_not_serialized: std::collections::HashSet::new(),
-            physical_topology: PhysicalTopology::ConfChainStatic(ConfChainStatic {
+            physical_topology: PhysicalTopology::Chain(ConfChain {
                 chain_params: crate::physical_topology::ChainParams {
                     orbit_to_orbit_distance: 3000000.0,
                     ground_to_orbit_distance: 1000000.0,
@@ -116,7 +116,7 @@ mod tests {
                     elevation_max: 60.0,
                 },
                 sat_weight: crate::physical_topology::NodeWeight {
-                    label: String::default(),
+                    label: None,
                     node_type: crate::physical_topology::NodeType::SAT,
                     memory_qubits,
                     decay_rate: 1.0,
@@ -128,7 +128,7 @@ mod tests {
                     capacity: 1000.0,
                 },
                 ogs_weight: crate::physical_topology::NodeWeight {
-                    label: String::default(),
+                    label: None,
                     node_type: crate::physical_topology::NodeType::OGS,
                     memory_qubits,
                     decay_rate: 1.0,
@@ -139,14 +139,16 @@ mod tests {
                     transmitters: 0,
                     capacity: 0.0,
                 },
-                fidelities: crate::physical_topology::StaticFidelities {
+            }),
+            fidelity_computer: crate::user_config::FidelityComputer::StaticFidelities(
+                crate::physical_topology::StaticFidelities {
                     f_o: 0.99,
                     f_g: 0.98,
                     f_oo: 0.97,
                     f_og: 0.96,
                     f_gg: 0.95,
                 },
-            }),
+            ),
             logical_topology: LogicalTopology::default(),
             applications: Applications::ConfPing(ConfPing {
                 source_dest_pairs: SourceDestPairs::List(vec![(0, 1)]),

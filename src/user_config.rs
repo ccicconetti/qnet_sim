@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: © 2025 Claudio Cicconetti <c.cicconetti@iit.cnr.it>
 // SPDX-License-Identifier: MIT
 
+use crate::physical_topology::{PhysicalTopologyParams, StaticFidelities};
+
 pub fn default_sat_weight() -> crate::physical_topology::NodeWeight {
     crate::physical_topology::NodeWeight {
-        label: String::default(),
+        label: None,
         node_type: crate::physical_topology::NodeType::SAT,
         memory_qubits: 20,
         decay_rate: 1.0,
@@ -18,7 +20,7 @@ pub fn default_sat_weight() -> crate::physical_topology::NodeWeight {
 
 pub fn default_ogs_weight() -> crate::physical_topology::NodeWeight {
     crate::physical_topology::NodeWeight {
-        label: String::default(),
+        label: None,
         node_type: crate::physical_topology::NodeType::OGS,
         memory_qubits: 100,
         decay_rate: 1.0,
@@ -32,73 +34,58 @@ pub fn default_ogs_weight() -> crate::physical_topology::NodeWeight {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct ConfGridStatic {
+pub struct ConfGrid {
     pub grid_params: crate::physical_topology::GridParams,
     pub sat_weight: crate::physical_topology::NodeWeight,
     pub ogs_weight: crate::physical_topology::NodeWeight,
-    pub fidelities: crate::physical_topology::StaticFidelities,
 }
 
-impl Default for ConfGridStatic {
+impl Default for ConfGrid {
     fn default() -> Self {
         Self {
             grid_params: Default::default(),
             sat_weight: default_sat_weight(),
             ogs_weight: default_ogs_weight(),
-            fidelities: Default::default(),
         }
     }
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct ConfChainStatic {
+pub struct ConfChain {
     pub chain_params: crate::physical_topology::ChainParams,
     pub sat_weight: crate::physical_topology::NodeWeight,
     pub ogs_weight: crate::physical_topology::NodeWeight,
-    pub fidelities: crate::physical_topology::StaticFidelities,
 }
 
-impl Default for ConfChainStatic {
+impl Default for ConfChain {
     fn default() -> Self {
         Self {
             chain_params: Default::default(),
             sat_weight: default_sat_weight(),
             ogs_weight: default_ogs_weight(),
-            fidelities: Default::default(),
         }
     }
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum PhysicalTopology {
-    ConfGridStatic(ConfGridStatic),
-    ConfChainStatic(ConfChainStatic),
+    Grid(ConfGrid),
+    Chain(ConfChain),
 }
 
 impl PhysicalTopology {
-    pub fn to_physical_topology(
-        &self,
-        seed: u64,
-    ) -> anyhow::Result<crate::physical_topology::PhysicalTopology> {
+    pub fn make(&self, seed: u64) -> anyhow::Result<crate::physical_topology::PhysicalTopology> {
         match self {
-            PhysicalTopology::ConfGridStatic(conf) => {
-                crate::physical_topology::PhysicalTopology::from_grid_static(
-                    conf.grid_params.clone(),
-                    conf.sat_weight.clone(),
-                    conf.ogs_weight.clone(),
-                    conf.fidelities.clone(),
-                    seed,
-                )
-            }
-            PhysicalTopology::ConfChainStatic(conf) => {
-                crate::physical_topology::PhysicalTopology::from_chain_static(
-                    conf.chain_params.clone(),
-                    conf.sat_weight.clone(),
-                    conf.ogs_weight.clone(),
-                    conf.fidelities.clone(),
-                    seed,
-                )
-            }
+            PhysicalTopology::Grid(conf) => conf.grid_params.make_topology(
+                conf.sat_weight.clone(),
+                conf.ogs_weight.clone(),
+                seed,
+            ),
+            PhysicalTopology::Chain(conf) => conf.chain_params.make_topology(
+                conf.sat_weight.clone(),
+                conf.ogs_weight.clone(),
+                seed,
+            ),
         }
     }
 }
@@ -106,39 +93,66 @@ impl PhysicalTopology {
 impl crate::utils::CsvFriend for PhysicalTopology {
     fn header(&self) -> String {
         match &self {
-            PhysicalTopology::ConfGridStatic(conf) => format!(
-                "{},{},{},{}",
+            PhysicalTopology::Grid(conf) => format!(
+                "{},{},{}",
                 crate::utils::struct_to_csv_header(&conf.grid_params).unwrap(),
                 crate::utils::struct_to_csv_header(&conf.sat_weight).unwrap(),
                 crate::utils::struct_to_csv_header(&conf.ogs_weight).unwrap(),
-                crate::utils::struct_to_csv_header(&conf.fidelities).unwrap()
             ),
-            PhysicalTopology::ConfChainStatic(conf) => format!(
-                "{},{},{},{}",
+            PhysicalTopology::Chain(conf) => format!(
+                "{},{},{}",
                 crate::utils::struct_to_csv_header(&conf.chain_params).unwrap(),
                 crate::utils::struct_to_csv_header(&conf.sat_weight).unwrap(),
                 crate::utils::struct_to_csv_header(&conf.ogs_weight).unwrap(),
-                crate::utils::struct_to_csv_header(&conf.fidelities).unwrap()
             ),
         }
     }
 
     fn to_csv(&self) -> String {
         match &self {
-            PhysicalTopology::ConfGridStatic(conf) => format!(
-                "{},{},{},{}",
+            PhysicalTopology::Grid(conf) => format!(
+                "{},{},{}",
                 crate::utils::struct_to_csv(&conf.grid_params).unwrap(),
                 crate::utils::struct_to_csv(&conf.sat_weight).unwrap(),
                 crate::utils::struct_to_csv(&conf.ogs_weight).unwrap(),
-                crate::utils::struct_to_csv(&conf.fidelities).unwrap()
             ),
-            PhysicalTopology::ConfChainStatic(conf) => format!(
-                "{},{},{},{}",
+            PhysicalTopology::Chain(conf) => format!(
+                "{},{},{}",
                 crate::utils::struct_to_csv(&conf.chain_params).unwrap(),
                 crate::utils::struct_to_csv(&conf.sat_weight).unwrap(),
                 crate::utils::struct_to_csv(&conf.ogs_weight).unwrap(),
-                crate::utils::struct_to_csv(&conf.fidelities).unwrap()
             ),
+        }
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub enum FidelityComputer {
+    StaticFidelities(crate::physical_topology::StaticFidelities),
+}
+
+impl FidelityComputer {
+    pub fn make(&self) -> Box<dyn crate::physical_topology::FidelityComputer> {
+        match self {
+            Self::StaticFidelities(conf) => Box::new(conf.clone()),
+        }
+    }
+}
+
+impl crate::utils::CsvFriend for FidelityComputer {
+    fn header(&self) -> String {
+        match &self {
+            Self::StaticFidelities(conf) => {
+                format!("{}", crate::utils::struct_to_csv_header(&conf).unwrap(),)
+            }
+        }
+    }
+
+    fn to_csv(&self) -> String {
+        match &self {
+            Self::StaticFidelities(conf) => {
+                format!("{}", crate::utils::struct_to_csv(&conf).unwrap(),)
+            }
         }
     }
 }
@@ -248,6 +262,8 @@ pub struct UserConfig {
     pub sections_not_serialized: std::collections::HashSet<String>,
     /// The physical topology configuration.
     pub physical_topology: PhysicalTopology,
+    /// The fidelity computer.
+    pub fidelity_computer: FidelityComputer,
     /// The logical topology configuration.
     pub logical_topology: LogicalTopology,
     /// The applications.
@@ -261,7 +277,8 @@ impl Default for UserConfig {
             warmup_period: 1.0,
             series_ignore: std::collections::HashSet::new(),
             sections_not_serialized: std::collections::HashSet::new(),
-            physical_topology: PhysicalTopology::ConfGridStatic(ConfGridStatic::default()),
+            physical_topology: PhysicalTopology::Grid(ConfGrid::default()),
+            fidelity_computer: FidelityComputer::StaticFidelities(StaticFidelities::default()),
             logical_topology: LogicalTopology::default(),
             applications: Applications::default(),
         }
@@ -274,6 +291,10 @@ impl crate::utils::CsvFriend for UserConfig {
         if !self.sections_not_serialized.contains("physical_topology") {
             ret += ",";
             ret += &self.physical_topology.header();
+        }
+        if !self.sections_not_serialized.contains("fidelity_computer") {
+            ret += ",";
+            ret += &self.fidelity_computer.header();
         }
         if !self.sections_not_serialized.contains("logical_topology") {
             ret += ",";
@@ -290,6 +311,10 @@ impl crate::utils::CsvFriend for UserConfig {
         if !self.sections_not_serialized.contains("physical_topology") {
             ret += ",";
             ret += &self.physical_topology.to_csv();
+        }
+        if !self.sections_not_serialized.contains("fidelity_computer") {
+            ret += ",";
+            ret += &self.fidelity_computer.to_csv();
         }
         if !self.sections_not_serialized.contains("logical_topology") {
             ret += ",";

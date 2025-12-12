@@ -209,7 +209,7 @@ fn physical_to_logical_random_greedy(
     // Add all nodes from the physical topology.
     for node_weight in physical_graph.node_weights() {
         logical_graph.add_node(NodeWeight {
-            label: node_weight.label.clone(),
+            label: node_weight.label.clone().unwrap_or_default(),
         });
     }
 

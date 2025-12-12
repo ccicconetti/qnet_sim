@@ -27,8 +27,89 @@ impl Default for StaticFidelities {
     }
 }
 
-impl StaticFidelities {
-    pub fn valid(&self) -> anyhow::Result<()> {
+impl super::FidelityComputer for StaticFidelities {
+    fn fidelity(
+        &self,
+        topology: &super::PhysicalTopology,
+        tx: u32,
+        u: u32,
+        v: u32,
+    ) -> anyhow::Result<f64> {
+        topology.node_valid(tx)?;
+        topology.node_valid(u)?;
+        topology.node_valid(v)?;
+        let tx = petgraph::graph::NodeIndex::from(tx);
+        let u = petgraph::graph::NodeIndex::from(u);
+        let v = petgraph::graph::NodeIndex::from(v);
+        anyhow::ensure!(
+            topology.graph.node_weight(tx).unwrap().transmitters > 0,
+            "there are no transmitters on board of {}",
+            tx.index()
+        );
+        anyhow::ensure!(
+            u != v,
+            "rx nodes are the same: {} = {}",
+            u.index(),
+            v.index()
+        );
+        anyhow::ensure!(
+            matches!(
+                topology.graph.node_weight(tx).unwrap().node_type,
+                super::NodeType::SAT
+            ),
+            "node is an OGS and cannot be a transmitter: {}",
+            tx.index()
+        );
+
+        if tx == u {
+            anyhow::ensure!(
+                topology.graph.find_edge(tx, v).is_some(),
+                "there is no edge between nodes {} and {}",
+                tx.index(),
+                v.index()
+            );
+            match topology.graph.node_weight(v).unwrap().node_type {
+                super::NodeType::SAT => Ok(self.f_o),
+                super::NodeType::OGS => Ok(self.f_g),
+            }
+        } else if tx == v {
+            anyhow::ensure!(
+                topology.graph.find_edge(tx, u).is_some(),
+                "there is no edge between nodes {} and {}",
+                tx.index(),
+                u.index()
+            );
+            match topology.graph.node_weight(u).unwrap().node_type {
+                super::NodeType::SAT => Ok(self.f_o),
+                super::NodeType::OGS => Ok(self.f_g),
+            }
+        } else {
+            anyhow::ensure!(
+                topology.graph.find_edge(tx, u).is_some(),
+                "there is no edge between nodes {} and {}",
+                tx.index(),
+                u.index()
+            );
+            anyhow::ensure!(
+                topology.graph.find_edge(tx, v).is_some(),
+                "there is no edge between nodes {} and {}",
+                tx.index(),
+                v.index()
+            );
+            match topology.graph.node_weight(u).unwrap().node_type {
+                super::NodeType::SAT => match topology.graph.node_weight(v).unwrap().node_type {
+                    super::NodeType::SAT => Ok(self.f_oo),
+                    super::NodeType::OGS => Ok(self.f_og),
+                },
+                super::NodeType::OGS => match topology.graph.node_weight(v).unwrap().node_type {
+                    super::NodeType::SAT => Ok(self.f_og),
+                    super::NodeType::OGS => Ok(self.f_gg),
+                },
+            }
+        }
+    }
+
+    fn valid(&self) -> anyhow::Result<()> {
         let fidelities = vec![
             (self.f_o, "one-hop, orbit-to-orbit"),
             (self.f_g, "one-hop, orbit-to-ground"),

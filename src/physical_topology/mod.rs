@@ -2,17 +2,17 @@
 // SPDX-License-Identifier: MIT
 
 pub mod chain_params;
+pub mod fidelity_computer;
+pub mod file_params;
 pub mod grid_params;
 pub mod static_fidelities;
 #[cfg(test)]
 pub mod tests;
 
 pub use crate::physical_topology::chain_params::ChainParams;
+pub use crate::physical_topology::fidelity_computer::FidelityComputer;
 pub use crate::physical_topology::grid_params::GridParams;
 pub use crate::physical_topology::static_fidelities::StaticFidelities;
-
-use rand::Rng;
-use rand::SeedableRng;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum NodeType {
@@ -38,7 +38,7 @@ impl std::fmt::Display for NodeType {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct NodeWeight {
     /// Node label.
-    pub label: String,
+    pub label: Option<String>,
     /// Node type.
     pub node_type: NodeType,
     /// Number of memory qubits.
@@ -62,7 +62,11 @@ pub struct NodeWeight {
 
 impl std::fmt::Display for NodeWeight {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.label)
+        if let Some(label) = &self.label {
+            write!(f, "{}", label)
+        } else {
+            write!(f, "{}", self.node_type)
+        }
     }
 }
 
@@ -75,7 +79,7 @@ impl Default for NodeWeight {
 impl NodeWeight {
     pub fn default_sat() -> Self {
         Self {
-            label: String::default(),
+            label: None,
             node_type: NodeType::SAT,
             memory_qubits: 1,
             decay_rate: 0.0,
@@ -90,7 +94,7 @@ impl NodeWeight {
 
     pub fn default_ogs() -> Self {
         Self {
-            label: String::default(),
+            label: None,
             node_type: NodeType::OGS,
             memory_qubits: 1,
             decay_rate: 0.0,
@@ -105,7 +109,7 @@ impl NodeWeight {
 
     pub fn clone_with_label(&self, label: String) -> Self {
         let mut clone = self.clone();
-        clone.label = label;
+        clone.label = Some(label);
         clone
     }
 
@@ -187,21 +191,6 @@ impl std::ops::Add for EdgeWeight {
     }
 }
 
-macro_rules! valid_node {
-    ($node:expr, $graph:expr) => {
-        anyhow::ensure!(
-            ($node as usize) < $graph.node_count(),
-            "there's no node {:?} in the graph",
-            $node
-        );
-        anyhow::ensure!(
-            $graph.node_weight($node.into()).is_some(),
-            "there's no node weight associated with {:?} in the graph",
-            $node
-        );
-    };
-}
-
 type Graph = petgraph::Graph<NodeWeight, EdgeWeight, petgraph::Undirected, u32>;
 
 /// Undirected graph representing the physical topology of the network.
@@ -215,7 +204,6 @@ type Graph = petgraph::Graph<NodeWeight, EdgeWeight, petgraph::Undirected, u32>;
 #[derive(Debug, Default)]
 pub struct PhysicalTopology {
     graph: Graph,
-    fidelities: StaticFidelities,
     paths: std::collections::HashMap<
         u32,
         petgraph::algo::bellman_ford::Paths<petgraph::graph::NodeIndex, EdgeWeight>,
@@ -225,205 +213,6 @@ pub struct PhysicalTopology {
 impl PhysicalTopology {
     pub fn graph(&self) -> &Graph {
         &self.graph
-    }
-
-    /// Build a physical topology consisting of a grid representing a number of
-    /// parallel orbits, with inter-orbit communications. The grid wraps around
-    /// at the orbits' end.
-    ///
-    /// Exactly one station is assigned to each square of 4 satellites (if in
-    /// the middle) or pair of satellites (if at the top/bottom).
-    ///
-    /// All the satellite and ground nodes have the same given characteristics.
-    /// and static fidelities.
-    pub fn from_grid_static(
-        grid_params: GridParams,
-        sat_weight: NodeWeight,
-        ogs_weight: NodeWeight,
-        fidelities: StaticFidelities,
-        seed: u64,
-    ) -> anyhow::Result<Self> {
-        let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
-
-        grid_params.valid()?;
-        sat_weight.valid()?;
-        assert!(sat_weight.node_type == NodeType::SAT);
-        ogs_weight.valid()?;
-        assert!(ogs_weight.node_type == NodeType::OGS);
-        fidelities.valid()?;
-
-        let mut graph = petgraph::Graph::new_undirected();
-
-        // Add SAT nodes.
-        let num_sat = grid_params.orbit_length * grid_params.num_orbits;
-        for cnt in 0..num_sat {
-            graph.add_node(sat_weight.clone_with_label(format!("sat#{}", cnt)));
-        }
-
-        // Add OGS nodes.
-        let num_ogs = grid_params.orbit_length * (1 + grid_params.num_orbits);
-        for cnt in 0..num_ogs {
-            graph.add_node(ogs_weight.clone_with_label(format!("ogs#{}", cnt)));
-        }
-
-        // Add orbit-to-orbit edges.
-
-        let orbit_weight = EdgeWeight {
-            distance: grid_params.orbit_to_orbit_distance,
-            elevation: rng.gen_range(grid_params.elevation_min..=grid_params.elevation_max),
-        };
-        for i in 0..grid_params.num_orbits {
-            for j in 0..grid_params.orbit_length {
-                let ndx = j + i * grid_params.orbit_length;
-                assert!(ndx < num_sat);
-                let mut others = std::collections::HashSet::new();
-                // Right
-                others.insert(i * grid_params.orbit_length + (j + 1) % grid_params.orbit_length);
-                // Left
-                others.insert(
-                    i * grid_params.orbit_length
-                        + (grid_params.orbit_length + j - 1) % grid_params.orbit_length,
-                );
-                // Up
-                if i != 0 {
-                    others.insert(ndx - grid_params.orbit_length);
-                }
-                // Down
-                if i != (grid_params.num_orbits - 1) {
-                    others.insert(ndx + grid_params.orbit_length);
-                }
-                for other_ndx in others {
-                    assert!(other_ndx < num_sat);
-                    if !graph.contains_edge(other_ndx.into(), ndx.into()) {
-                        graph.add_edge(ndx.into(), other_ndx.into(), orbit_weight);
-                    }
-                }
-            }
-        }
-
-        // Add ground-to-orbit edges.
-        let ground_weight = EdgeWeight {
-            distance: grid_params.ground_to_orbit_distance,
-            elevation: rng.gen_range(grid_params.elevation_min..=grid_params.elevation_max),
-        };
-        for i in 0..=grid_params.num_orbits {
-            for j in 0..grid_params.orbit_length {
-                let ndx = num_sat + j + i * grid_params.orbit_length;
-                assert!(ndx < num_sat + num_ogs);
-                let mut sats = std::collections::HashSet::new();
-                // Up
-                if i != 0 {
-                    sats.insert((i - 1) * grid_params.orbit_length + j);
-                    sats.insert(
-                        (i - 1) * grid_params.orbit_length
-                            + (grid_params.orbit_length + j - 1) % grid_params.orbit_length,
-                    );
-                }
-                // Down
-                if i != grid_params.num_orbits {
-                    sats.insert(i * grid_params.orbit_length + j);
-                    sats.insert(
-                        i * grid_params.orbit_length
-                            + (grid_params.orbit_length + j - 1) % grid_params.orbit_length,
-                    );
-                }
-                for sat_ndx in sats {
-                    assert!(sat_ndx < num_sat);
-                    if !graph.contains_edge(sat_ndx.into(), ndx.into()) {
-                        graph.add_edge(ndx.into(), sat_ndx.into(), ground_weight);
-                    }
-                }
-            }
-        }
-
-        Ok(Self {
-            graph,
-            fidelities,
-            paths: std::collections::HashMap::new(),
-        })
-    }
-
-    /// Build a physical topology consisting of an linear chain of repeaters,
-    /// with one OGS at each end.
-    ///
-    /// All the satellite and ground nodes have the same given characteristics.
-    /// and static fidelities.
-    pub fn from_chain_static(
-        chain_params: ChainParams,
-        sat_weight: NodeWeight,
-        ogs_weight: NodeWeight,
-        fidelities: StaticFidelities,
-        seed: u64,
-    ) -> anyhow::Result<Self> {
-        let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
-
-        chain_params.valid()?;
-        sat_weight.valid()?;
-        assert!(sat_weight.node_type == NodeType::SAT);
-        ogs_weight.valid()?;
-        assert!(ogs_weight.node_type == NodeType::OGS);
-        fidelities.valid()?;
-
-        let mut graph = petgraph::Graph::new_undirected();
-
-        // Add OGS nodes.
-        graph.add_node(ogs_weight.clone_with_label(String::from("alice")));
-        graph.add_node(ogs_weight.clone_with_label(String::from("bob")));
-
-        // Add SAT nodes.
-        for cnt in 0..chain_params.num_repeaters {
-            graph.add_node(sat_weight.clone_with_label(format!("rep#{}", cnt)));
-        }
-
-        // Add edges.
-        for i in 0..chain_params.num_repeaters {
-            let ndx = 2 + i;
-            assert!(ndx < graph.node_count() as u32);
-
-            // Left-most satellite: connect to left-side OGS.
-            if i == 0 {
-                graph.add_edge(
-                    ndx.into(),
-                    0.into(),
-                    EdgeWeight {
-                        distance: chain_params.ground_to_orbit_distance,
-                        elevation: rng
-                            .gen_range(chain_params.elevation_min..=chain_params.elevation_max),
-                    },
-                );
-            }
-
-            // Right-most satellite.
-            if i == (chain_params.num_repeaters - 1) {
-                // Connect to right-side OGS.
-                graph.add_edge(
-                    ndx.into(),
-                    1.into(),
-                    EdgeWeight {
-                        distance: chain_params.ground_to_orbit_distance,
-                        elevation: rng
-                            .gen_range(chain_params.elevation_min..=chain_params.elevation_max),
-                    },
-                );
-            } else {
-                // Connect to right-hand satellite.
-                graph.add_edge(
-                    ndx.into(),
-                    (ndx + 1).into(),
-                    EdgeWeight {
-                        distance: chain_params.orbit_to_orbit_distance,
-                        elevation: rng
-                            .gen_range(chain_params.elevation_min..=chain_params.elevation_max),
-                    },
-                );
-            }
-        }
-
-        Ok(Self {
-            graph,
-            fidelities,
-            paths: std::collections::HashMap::new(),
-        })
     }
 
     /// Return the indices of the in-orbit satelites.
@@ -446,11 +235,26 @@ impl PhysicalTopology {
         ret
     }
 
+    /// Check if a node is valid.
+    fn node_valid(&self, node: u32) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            (node as usize) < self.graph.node_count(),
+            "there's no node {:?} in the graph",
+            node
+        );
+        anyhow::ensure!(
+            self.graph.node_weight(node.into()).is_some(),
+            "there's no node weight associated with {:?} in the graph",
+            node
+        );
+        Ok(())
+    }
+
     /// Return the distance from node u to node v, in m.
     /// The paths are computed in a lazy manner.
     pub fn distance(&mut self, u: u32, v: u32) -> anyhow::Result<f64> {
-        valid_node!(u, self.graph);
-        valid_node!(v, self.graph);
+        self.node_valid(u)?;
+        self.node_valid(v)?;
         if let Some(paths) = self.paths.get(&u) {
             if let Some(_pred) = paths.predecessors[v as usize] {
                 Ok(paths.distances[v as usize].distance)
@@ -472,89 +276,9 @@ impl PhysicalTopology {
         }
     }
 
-    /// Return the initial fidelity of the EPR pairs generated by the given
-    /// transmitter towards the two nodes specified. Return error if `tx` does not
-    /// have a transmitter or there is no edge between `tx` and `u` or `v`.
-    ///
-    /// Parameters:
-    /// - `tx`: the node that generates EPR pairs
-    /// - `u`: one of the nodes that receives one photon of the EPR pairs
-    /// - `v`: the other one
-    pub fn fidelity(&self, tx: u32, u: u32, v: u32) -> anyhow::Result<f64> {
-        valid_node!(tx, self.graph);
-        valid_node!(u, self.graph);
-        valid_node!(v, self.graph);
-        let tx = petgraph::graph::NodeIndex::from(tx);
-        let u = petgraph::graph::NodeIndex::from(u);
-        let v = petgraph::graph::NodeIndex::from(v);
-        anyhow::ensure!(
-            self.graph.node_weight(tx).unwrap().transmitters > 0,
-            "there are no transmitters on board of {}",
-            tx.index()
-        );
-        anyhow::ensure!(
-            u != v,
-            "rx nodes are the same: {} = {}",
-            u.index(),
-            v.index()
-        );
-        anyhow::ensure!(
-            matches!(self.graph.node_weight(tx).unwrap().node_type, NodeType::SAT),
-            "node is an OGS and cannot be a transmitter: {}",
-            tx.index()
-        );
-
-        if tx == u {
-            anyhow::ensure!(
-                self.graph.find_edge(tx, v).is_some(),
-                "there is no edge between nodes {} and {}",
-                tx.index(),
-                v.index()
-            );
-            match self.graph.node_weight(v).unwrap().node_type {
-                NodeType::SAT => Ok(self.fidelities.f_o),
-                NodeType::OGS => Ok(self.fidelities.f_g),
-            }
-        } else if tx == v {
-            anyhow::ensure!(
-                self.graph.find_edge(tx, u).is_some(),
-                "there is no edge between nodes {} and {}",
-                tx.index(),
-                u.index()
-            );
-            match self.graph.node_weight(u).unwrap().node_type {
-                NodeType::SAT => Ok(self.fidelities.f_o),
-                NodeType::OGS => Ok(self.fidelities.f_g),
-            }
-        } else {
-            anyhow::ensure!(
-                self.graph.find_edge(tx, u).is_some(),
-                "there is no edge between nodes {} and {}",
-                tx.index(),
-                u.index()
-            );
-            anyhow::ensure!(
-                self.graph.find_edge(tx, v).is_some(),
-                "there is no edge between nodes {} and {}",
-                tx.index(),
-                v.index()
-            );
-            match self.graph.node_weight(u).unwrap().node_type {
-                NodeType::SAT => match self.graph.node_weight(v).unwrap().node_type {
-                    NodeType::SAT => Ok(self.fidelities.f_oo),
-                    NodeType::OGS => Ok(self.fidelities.f_og),
-                },
-                NodeType::OGS => match self.graph.node_weight(v).unwrap().node_type {
-                    NodeType::SAT => Ok(self.fidelities.f_og),
-                    NodeType::OGS => Ok(self.fidelities.f_gg),
-                },
-            }
-        }
-    }
-
     /// Create a topology of default nodes with given distances.
     #[cfg(test)]
-    fn from_distances(edges: Vec<(u32, u32, f64)>, fidelities: StaticFidelities) -> Self {
+    fn from_distances(edges: Vec<(u32, u32, f64)>) -> Self {
         let mut graph = petgraph::Graph::new_undirected();
 
         graph.extend_with_edges(edges.iter().map(|(u, v, distance)| {
@@ -569,8 +293,21 @@ impl PhysicalTopology {
         }));
         Self {
             graph,
-            fidelities,
             paths: std::collections::HashMap::new(),
         }
     }
+}
+
+pub trait PhysicalTopologyParams {
+    /// Check if the physical topology configuration is valid.
+    fn valid(&self) -> anyhow::Result<()>;
+
+    /// Build a physical topology with all the satellite and ground nodes
+    /// having the same given characteristics.
+    fn make_topology(
+        &self,
+        sat_weight: NodeWeight,
+        ogs_weight: NodeWeight,
+        seed: u64,
+    ) -> anyhow::Result<PhysicalTopology>;
 }
