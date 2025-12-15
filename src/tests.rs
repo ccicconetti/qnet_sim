@@ -50,27 +50,21 @@ pub fn logical_topology_2_2() -> (
     crate::logical_topology::LogicalTopology,
 ) {
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-    let num_tries = 10;
-
-    for _try in 0..num_tries {
-        let physical_topology = physical_topology_2_2();
-        if let Ok(logical_topology) =
-            crate::logical_topology::LogicalTopology::from_physical_topology(
-                &crate::logical_topology::PhysicalToLogicalPolicy::RandomGreedy,
-                &physical_topology,
-                &mut rng,
-            )
+    let physical_topology = physical_topology_2_2();
+    if let Ok(logical_topology) = crate::logical_topology::LogicalTopology::from_physical_topology(
+        &crate::logical_topology::PhysicalToLogicalPolicy::RandomGreedy,
+        &physical_topology,
+        &mut rng,
+    ) {
+        if crate::logical_topology::is_valid(&logical_topology.graph(), &physical_topology).is_ok()
         {
-            if crate::logical_topology::is_valid(&logical_topology.graph(), &physical_topology)
-                .is_ok()
-            {
-                return (physical_topology, logical_topology);
-            }
+            return (physical_topology, logical_topology);
         }
     }
+
     panic!(
-        "could not find a feasible logical topology in {} tries",
-        num_tries
+        "could not find a feasible logical topology for physical topology {:?}",
+        physical_topology
     );
 }
 
