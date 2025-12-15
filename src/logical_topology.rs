@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 use petgraph::visit::{EdgeRef, IntoNodeReferences};
-use shuffle::shuffler::Shuffler;
 
 const NEGLIGIBLE_AMOUNT: f64 = 1e-5;
 
@@ -15,6 +14,10 @@ pub enum PhysicalToLogicalPolicy {
 pub struct NodeWeight {
     /// Node label.
     pub label: String,
+    /// True if the node is a possible end-node.
+    pub is_endnode: bool,
+    /// True if the node is a repeater.
+    pub is_repeater: bool,
 }
 
 impl std::fmt::Display for NodeWeight {
@@ -79,10 +82,7 @@ impl std::ops::Add for EdgeWeight {
 }
 
 type Graph = petgraph::Graph<NodeWeight, EdgeWeight, petgraph::Directed, u32>;
-type Paths = std::collections::HashMap<
-    u32,
-    petgraph::algo::bellman_ford::Paths<petgraph::graph::NodeIndex, EdgeWeight>,
->;
+type Paths = std::collections::HashMap<(u32, u32), Vec<u32>>; // s,d -> path
 
 /// Undirected graph representing the logical topology of the network.
 ///
@@ -96,6 +96,7 @@ type Paths = std::collections::HashMap<
 pub struct LogicalTopology {
     graph: Graph,
     paths: Paths,
+    pub num_possible_logical_edges: usize,
 }
 
 impl LogicalTopology {
@@ -109,8 +110,13 @@ impl LogicalTopology {
     }
 
     /// Return the path between `src` and `dst` in the logical topology.
+    ///
+    /// Do not use nodes that are not repeaters for intermediate hops.
+    ///
     /// Subsequent calls always return the same path for the same
     /// source/destination pair.
+    ///
+    /// Panic if there is no such path.
     pub fn path(&self, src: u32, dst: u32) -> Vec<u32> {
         assert!(
             src < self.graph.node_count() as u32,
@@ -125,27 +131,11 @@ impl LogicalTopology {
             self.graph.node_count()
         );
 
-        let paths = self.paths.get(&src);
-        assert!(
-            paths.is_some(),
-            "could not find path from {src} to {dst} in the logical topology"
-        );
-        let paths = paths.unwrap();
-        assert!(paths.predecessors.len() == self.graph.node_count());
-        let mut ret = vec![dst];
-
-        let mut cur = dst as usize;
-        while cur != src as usize {
-            assert!(cur < paths.predecessors.len());
-            let prev = paths.predecessors[cur]
-                .expect("invalid predecessor when finding a path in the logical topology");
-            cur = prev.index();
-            ret.push(cur as u32);
+        if let Some(path) = self.paths.get(&(src, dst)) {
+            path.clone()
+        } else {
+            panic!("could not find path from {src} to {dst} in the logical topology");
         }
-
-        ret.reverse();
-
-        ret
     }
 
     /// Create the logical topology from a physical topology using algorithm
@@ -155,17 +145,23 @@ impl LogicalTopology {
         physical_topology: &crate::physical_topology::PhysicalTopology,
         rng: &mut rand::rngs::StdRng,
     ) -> anyhow::Result<Self> {
+        let possible_logical_edges = find_possible_logical_edges(physical_topology);
+        let num_possible_logical_edges = possible_logical_edges.len();
         let graph = match policy {
             PhysicalToLogicalPolicy::RandomGreedy => {
-                physical_to_logical_random_greedy(physical_topology, rng)?
+                physical_to_logical_random_greedy(physical_topology, possible_logical_edges, rng)?
             }
         };
         let paths = find_paths(&graph)?;
-        Ok(Self { graph, paths })
+        Ok(Self {
+            graph,
+            paths,
+            num_possible_logical_edges,
+        })
     }
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq, PartialOrd, Ord, Eq)]
 struct LogicalEdge {
     pub tx: u32,
     pub master: u32,
@@ -194,29 +190,49 @@ macro_rules! weight {
     };
 }
 
+/// Create a logical topology from a physical one using a greedy approach.
+///
+/// Return the logical graph.
 fn physical_to_logical_random_greedy(
     physical_topology: &crate::physical_topology::PhysicalTopology,
+    possible_logical_edges: Vec<LogicalEdge>,
     rng: &mut rand::rngs::StdRng,
 ) -> anyhow::Result<Graph> {
-    let mut possible_logical_edges = find_possible_logical_edges(physical_topology);
-    let mut irs = shuffle::irs::Irs::default();
-    let _ = irs.shuffle(&mut possible_logical_edges, rng);
+    let mut possible_logical_edges = possible_logical_edges;
+    possible_logical_edges.sort();
+    crate::utils::shuffle(&mut possible_logical_edges, rng);
 
     let mut physical_graph = physical_topology.graph().clone();
-
     let mut logical_graph = Graph::new();
 
     // Add all nodes from the physical topology.
     for node_weight in physical_graph.node_weights() {
         logical_graph.add_node(NodeWeight {
             label: node_weight.label.clone().unwrap_or_default(),
+            is_endnode: matches!(
+                node_weight.node_type,
+                super::physical_topology::NodeType::OGS
+            ),
+            is_repeater: node_weight.is_repeater,
         });
     }
 
-    // Save OGS nodes.
-    let ogs_nodes = physical_topology.ogs_indices();
+    // Keep track of which paths have been found.
+    let mut paths_not_found = std::collections::HashSet::new();
+    for s in physical_topology.ogs_indices() {
+        for d in physical_topology.ogs_indices() {
+            paths_not_found.insert((s, d));
+        }
+    }
 
+    // The loop below terminates when either there are no more possible
+    // logical edges to be added or all the paths have been found.
     for logical_edge in possible_logical_edges {
+        // Break if all the paths have been found.
+        if paths_not_found.is_empty() {
+            break;
+        }
+
         // Skip if master and slave are already connected by an edge.
         if logical_graph
             .find_edge(logical_edge.master.into(), logical_edge.slave.into())
@@ -225,7 +241,7 @@ fn physical_to_logical_random_greedy(
             continue;
         }
 
-        // Skip if end-points do not have each at least one  memory qubit.
+        // Skip if end-points do not have each at least one memory qubit.
         if weight!(logical_edge.master, physical_graph).memory_qubits == 0
             || weight!(logical_edge.slave, physical_graph).memory_qubits == 0
         {
@@ -264,15 +280,27 @@ fn physical_to_logical_random_greedy(
             },
         );
 
-        // Break as soon as all the OGS nodes can reach one another.
-        if reachable(&logical_graph, &ogs_nodes) {
-            break;
+        // Remove any new paths found, if any.
+        let repeater_graph = make_repeater_graph(&logical_graph);
+        let mut new_paths_found = vec![];
+        for (s, d) in &paths_not_found {
+            if !find_path(&logical_graph, &repeater_graph, s, d).is_empty() {
+                new_paths_found.push((*s, *d));
+            }
+        }
+        for new_path_found in new_paths_found {
+            paths_not_found.remove(&new_path_found);
         }
     }
 
     anyhow::ensure!(
-        reachable(&logical_graph, &ogs_nodes),
-        "could not find a logical topology for the given physical topology"
+        paths_not_found.is_empty(),
+        "could not find logical paths for the following pairs ({} out of {}) for the physical topology below:{:?}\n{:?}\n{:?}",
+        paths_not_found.len(),
+        physical_topology.ogs_indices().len().pow(2),
+        paths_not_found,
+        physical_topology,
+        logical_graph
     );
 
     // Assign residual memory qubits as possible, one at a time.
@@ -280,8 +308,8 @@ fn physical_to_logical_random_greedy(
     for edge in logical_graph.edge_references() {
         candidate_edges.push((edge.source(), edge.target()));
     }
-    let mut irs = shuffle::irs::Irs::default();
-    let _ = irs.shuffle(&mut candidate_edges, rng);
+    candidate_edges.sort();
+    crate::utils::shuffle(&mut candidate_edges, rng);
 
     while !candidate_edges.is_empty() {
         let mut candidate_edges_new = vec![];
@@ -331,29 +359,114 @@ fn physical_to_logical_random_greedy(
     Ok(logical_graph)
 }
 
-/// Return all possible paths on the logical topology graph from any source node
-/// to all others.
+/// Return all possible paths on the logical topology graph from any end node
+/// to any other, only crossing repeater nodes.
 fn find_paths(logical_graph: &Graph) -> anyhow::Result<Paths> {
     let mut all_paths = std::collections::HashMap::new();
-    for source in logical_graph.node_indices() {
-        match petgraph::algo::bellman_ford(&logical_graph, source) {
-            Ok(local_paths) => {
-                all_paths.insert(source.index() as u32, local_paths);
-            }
-            Err(_err) => anyhow::bail!(
-                "cannot compute path from {}: negative cycle",
-                source.index()
-            ),
+
+    let repeater_graph = make_repeater_graph(&logical_graph);
+
+    // Collect all the possible end nodes.
+    let endnodes: Vec<u32> = logical_graph
+        .node_weights()
+        .enumerate()
+        .filter_map(|(u, w)| if w.is_endnode { Some(u as u32) } else { None })
+        .collect();
+
+    // Compute the paths.
+    for s in &endnodes {
+        for d in &endnodes {
+            let path = find_path(logical_graph, &repeater_graph, s, d);
+            anyhow::ensure!(
+                !path.is_empty(),
+                "cannot compute path from {} to {} in the logical graph",
+                s,
+                d
+            );
+            all_paths.insert((*s, *d), path);
         }
     }
     Ok(all_paths)
+}
+
+/// Return the repeater graph for a logical topology.
+///
+/// Create a copy of the logical graph containing all the nodes in the
+/// original graph, but only the edges that connect any two nodes that are
+/// both repeaters.
+fn make_repeater_graph(logical_graph: &Graph) -> petgraph::Graph<(), f64> {
+    let mut repeater_graph = petgraph::Graph::new();
+    for _ in logical_graph.node_indices() {
+        repeater_graph.add_node(());
+    }
+    for e in logical_graph.edge_references() {
+        if logical_graph[e.source()].is_repeater && logical_graph[e.target()].is_repeater {
+            repeater_graph.add_edge(e.source(), e.target(), 1.0);
+        }
+    }
+    repeater_graph
+}
+
+/// Return the path from `s` to `d` in the logical graph, if available,
+/// otherwise return an empty vector.
+///
+/// The `graph_repeater` is a graph containing the same nodes as `logical_graph`
+/// but only the edges connecting two repeater nodes.
+fn find_path(
+    logical_graph: &Graph,
+    repeater_graph: &petgraph::Graph<(), f64>,
+    s: &u32,
+    d: &u32,
+) -> Vec<u32> {
+    // Add the edges for the source and destination nodes.
+    let mut repeater_graph = repeater_graph.clone();
+    for e in logical_graph.edges_directed((*s).into(), petgraph::Incoming) {
+        repeater_graph.add_edge(e.source(), e.target(), 1.0);
+    }
+    for e in logical_graph.edges_directed((*s).into(), petgraph::Outgoing) {
+        repeater_graph.add_edge(e.source(), e.target(), 1.0);
+    }
+    for e in logical_graph.edges_directed((*d).into(), petgraph::Incoming) {
+        repeater_graph.add_edge(e.source(), e.target(), 1.0);
+    }
+    for e in logical_graph.edges_directed((*d).into(), petgraph::Outgoing) {
+        repeater_graph.add_edge(e.source(), e.target(), 1.0);
+    }
+
+    // Find the shortest path from s to d.
+    match petgraph::algo::bellman_ford(&repeater_graph, (*s).into()) {
+        Ok(paths) => {
+            assert!(paths.predecessors.len() == repeater_graph.node_count());
+            let mut path = vec![*d];
+
+            let mut cur = *d as usize;
+            while cur != *s as usize {
+                assert!(cur < paths.predecessors.len());
+                if let Some(prev) = paths.predecessors[cur] {
+                    cur = prev.index();
+                    path.push(cur as u32);
+                } else {
+                    return vec![];
+                }
+            }
+
+            path.reverse();
+
+            path
+        }
+        Err(_err) => {
+            panic!(
+                "negative cycle detected when finding the path from {} to {}",
+                s, d
+            );
+        }
+    }
 }
 
 /// Return Ok() if the logical topology is valid.
 ///
 /// A logical topology is valid if:
 ///
-/// - any OGS node can reach any other
 /// - each edge appears at most once between any two nodes
 /// - each edge has non-vanishing memory qubits and capacity
 /// - the sum of the capacity of transmitters is not exceeded
@@ -369,10 +482,6 @@ pub fn is_valid(
     logical_topology: &Graph,
     physical_topology: &crate::physical_topology::PhysicalTopology,
 ) -> anyhow::Result<()> {
-    anyhow::ensure!(
-        reachable(logical_topology, &physical_topology.ogs_indices()),
-        "there is some OGS that cannot be reached by another OGS"
-    );
     for e in logical_topology.edge_references() {
         anyhow::ensure!(
             logical_topology
@@ -447,26 +556,6 @@ pub fn is_valid(
         );
     }
     Ok(())
-}
-
-/// Return true if any node can reach any other via the given graph.
-fn reachable(graph: &Graph, nodes: &Vec<u32>) -> bool {
-    for u in nodes {
-        match petgraph::algo::bellman_ford(&graph, (*u).into()) {
-            Ok(paths) => {
-                for v in nodes {
-                    if *u == *v {
-                        continue;
-                    }
-                    if paths.predecessors[*v as usize].is_none() {
-                        return false;
-                    }
-                }
-            }
-            Err(_err) => return false,
-        }
-    }
-    true
 }
 
 /// Find all possible logical edges in a given physical topology.
@@ -595,70 +684,51 @@ mod tests {
     fn test_logical_topology_physical_to_logical_random_greedy() -> anyhow::Result<()> {
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
 
-        for _try in 0..10 {
-            let physical_topology = physical_topology_2_2();
-            if let Ok(logical_graph) =
-                physical_to_logical_random_greedy(&physical_topology, &mut rng)
-            {
-                for e in logical_graph.edge_references() {
-                    println!(
-                        "{} -> {}, {:?}",
-                        e.source().index(),
-                        e.target().index(),
-                        e.weight()
-                    );
-                }
+        let physical_topology = physical_topology_2_2();
+        let possible_logical_edges = find_possible_logical_edges(&physical_topology);
+        assert_eq!(168, possible_logical_edges.len());
+        if let Ok(logical_graph) =
+            physical_to_logical_random_greedy(&physical_topology, possible_logical_edges, &mut rng)
+        {
+            for e in logical_graph.edge_references() {
+                println!(
+                    "{} -> {}, {:?}",
+                    e.source().index(),
+                    e.target().index(),
+                    e.weight()
+                );
+            }
 
-                if is_valid(&logical_graph, &physical_topology).is_err() {
+            assert!(is_valid(&logical_graph, &physical_topology).is_ok());
+
+            let all_paths = find_paths(&logical_graph)?;
+
+            let ogs_node_ids: std::collections::HashSet<u32> = std::collections::HashSet::from_iter(
+                physical_topology.ogs_indices().iter().cloned(),
+            );
+
+            for ((s, d), path) in all_paths {
+                // Skip non-OGS nodes.
+                if !ogs_node_ids.contains(&s) {
                     continue;
                 }
 
-                let all_paths = find_paths(&logical_graph)?;
+                println!(
+                    "path from {} to {}: {}",
+                    s,
+                    d,
+                    path.iter()
+                        .map(|x| format!("{:?}", x))
+                        .collect::<Vec<String>>()
+                        .join(",")
+                );
 
-                let ogs_node_ids: std::collections::HashSet<u32> =
-                    std::collections::HashSet::from_iter(
-                        physical_topology.ogs_indices().iter().cloned(),
-                    );
-
-                for (source, paths) in all_paths {
-                    // Skip non-OGS nodes.
-                    if !ogs_node_ids.contains(&source) {
-                        continue;
-                    }
-                    println!(
-                        "distances of {}: {}",
-                        source,
-                        paths
-                            .distances
-                            .iter()
-                            .map(|x| format!("{}", x.cost))
-                            .collect::<Vec<String>>()
-                            .join(",")
-                    );
-                    println!(
-                        "predecessors of {}: {}",
-                        source,
-                        paths
-                            .predecessors
-                            .iter()
-                            .map(|x| format!("{:?}", x))
-                            .collect::<Vec<String>>()
-                            .join(",")
-                    );
-                    for target in 0..paths.distances.len() as u32 {
-                        // Skip this node and non-OGS nodes.
-                        if source == target || !ogs_node_ids.contains(&target) {
-                            continue;
-                        }
-                        assert!(paths.distances[target as usize].cost <= 9);
-                        assert!(paths.predecessors[target as usize].is_some());
-                    }
-                }
+                assert!(path.len() <= 9);
             }
 
-            return Ok(());
+            assert_eq!(45, logical_graph.edge_count());
         }
 
-        anyhow::bail!("test failed");
+        Ok(())
     }
 }

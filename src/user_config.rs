@@ -2,11 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 use crate::physical_topology::{PhysicalTopologyParams, StaticFidelities};
+use rand::SeedableRng;
+use rand_distr::Distribution;
 
 pub fn default_sat_weight() -> crate::physical_topology::NodeWeight {
     crate::physical_topology::NodeWeight {
         label: None,
         node_type: crate::physical_topology::NodeType::SAT,
+        is_repeater: true,
         memory_qubits: 20,
         decay_rate: 1.0,
         swapping_success_prob: 0.95,
@@ -22,6 +25,7 @@ pub fn default_ogs_weight() -> crate::physical_topology::NodeWeight {
     crate::physical_topology::NodeWeight {
         label: None,
         node_type: crate::physical_topology::NodeType::OGS,
+        is_repeater: false,
         memory_qubits: 100,
         decay_rate: 1.0,
         swapping_success_prob: 0.0,
@@ -191,6 +195,50 @@ pub enum SourceDestPairs {
 impl Default for SourceDestPairs {
     fn default() -> Self {
         Self::Random(1)
+    }
+}
+
+impl SourceDestPairs {
+    /// Make source/destination pairs.
+    pub fn make_pairs(&self, end_nodes: Vec<u32>, seed: u64) -> Vec<(u32, u32)> {
+        let mut source_dest_pairs = vec![];
+        match self {
+            Self::Random(num_applications) => {
+                let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+                let uniform = rand_distr::Uniform::new(0, end_nodes.len());
+                for _ in 0..*num_applications {
+                    let this_node_ndx = uniform.sample(&mut rng) as u32;
+                    let peer_node_ndx = loop {
+                        let candidate = uniform.sample(&mut rng) as u32;
+                        if candidate != this_node_ndx {
+                            break candidate;
+                        }
+                    };
+                    source_dest_pairs.push((
+                        end_nodes[this_node_ndx as usize],
+                        end_nodes[peer_node_ndx as usize],
+                    ));
+                }
+            }
+            Self::AllToAll => {
+                for this_node_id in &end_nodes {
+                    for peer_node_id in &end_nodes {
+                        if this_node_id == peer_node_id {
+                            continue;
+                        }
+                        source_dest_pairs.push((*this_node_id, *peer_node_id));
+                    }
+                }
+            }
+            Self::List(pairs) => {
+                for (this_node_id, peer_node_id) in pairs {
+                    assert!(end_nodes.iter().find(|x| *x == this_node_id).is_some());
+                    assert!(end_nodes.iter().find(|x| *x == peer_node_id).is_some());
+                    source_dest_pairs.push((*this_node_id, *peer_node_id));
+                }
+            }
+        }
+        source_dest_pairs
     }
 }
 

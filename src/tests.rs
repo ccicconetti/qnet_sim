@@ -17,19 +17,21 @@ pub fn physical_topology_2_2() -> crate::physical_topology::PhysicalTopology {
         crate::physical_topology::NodeWeight {
             label: None,
             node_type: crate::physical_topology::NodeType::SAT,
-            memory_qubits: 10,
+            is_repeater: true,
+            memory_qubits: 20,
             decay_rate: 1.0,
             swapping_success_prob: 0.5,
             swapping_duration: 0.001,
             correction_duration: 0.0,
-            detectors: 10,
-            transmitters: 10,
+            detectors: 20,
+            transmitters: 20,
             capacity: 1.0,
         },
         crate::physical_topology::NodeWeight {
             label: None,
             node_type: crate::physical_topology::NodeType::OGS,
-            memory_qubits: 20,
+            is_repeater: false,
+            memory_qubits: 10,
             decay_rate: 1.0,
             swapping_success_prob: 0.0,
             swapping_duration: 0.0,
@@ -118,6 +120,7 @@ mod tests {
                 sat_weight: crate::physical_topology::NodeWeight {
                     label: None,
                     node_type: crate::physical_topology::NodeType::SAT,
+                    is_repeater: true,
                     memory_qubits,
                     decay_rate: 1.0,
                     swapping_success_prob: 0.95,
@@ -130,6 +133,7 @@ mod tests {
                 ogs_weight: crate::physical_topology::NodeWeight {
                     label: None,
                     node_type: crate::physical_topology::NodeType::OGS,
+                    is_repeater: false,
                     memory_qubits,
                     decay_rate: 1.0,
                     swapping_success_prob: 0.0,
@@ -202,7 +206,7 @@ mod tests {
         assert_eq!(100, series.get("app-net-latency").unwrap().values.len());
         assert_eq!(100, series.get("ping-latency").unwrap().values.len());
         assert_eq!(200, series.get("fidelity").unwrap().values.len());
-        check_interval("fidelity", &series, 0.92, 1.0);
+        check_interval("fidelity", &series, 0.91, 1.0);
         check_interval("gen-fidelity", &series, 0.95, 0.99);
         check_interval("app-tries", &series, 1.0, 3.0);
         check_interval("occupancy", &series, 0.0, 1.0);

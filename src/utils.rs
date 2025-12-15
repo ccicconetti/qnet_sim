@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: © 2025 Claudio Cicconetti <c.cicconetti@iit.cnr.it>
 // SPDX-License-Identifier: MIT
 
+use rand::Rng;
 use serde::Serialize;
 use std::io::Write;
 
@@ -114,6 +115,16 @@ fn struct_to_map<T: Serialize>(s: T) -> anyhow::Result<serde_json::Map<String, s
     let mut fields = json_unflattening::flattening::flatten(&value)?;
     fields.sort_keys();
     Ok(fields)
+}
+
+/// Shuffle a container, see:
+/// https://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle
+pub fn shuffle<T>(v: &mut Vec<T>, rng: &mut rand::rngs::StdRng) {
+    for i in 0..v.len() {
+        let i = v.len() - i - 1; // i goes from n-1 to 1
+        let j = rng.gen_range(0..=i);
+        v.swap(i, j);
+    }
 }
 
 #[cfg(test)]

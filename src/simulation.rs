@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 use rand::SeedableRng;
-use rand_distr::Distribution;
 use std::io::Write;
 
 use crate::event::{Event, EventHandler, EventType};
@@ -55,8 +54,8 @@ impl Simulation {
     ) -> crate::network::Network {
         let mut rng = rand::rngs::StdRng::seed_from_u64(config.seed);
 
-        let logical_topology = if let Ok(logical_topology) =
-            crate::logical_topology::LogicalTopology::from_physical_topology(
+        let logical_topology =
+            match crate::logical_topology::LogicalTopology::from_physical_topology(
                 &config
                     .user_config
                     .logical_topology
@@ -64,22 +63,35 @@ impl Simulation {
                 &physical_topology,
                 &mut rng,
             ) {
-            if crate::logical_topology::is_valid(logical_topology.graph(), &physical_topology)
-                .is_ok()
-            {
-                log::debug!("{:#?}", logical_topology.graph());
+                Ok(logical_topology) => {
+                    log::info!(
+                        "logical topology found with {} edges (out of {} possible)",
+                        logical_topology.graph().edge_count(),
+                        logical_topology.num_possible_logical_edges
+                    );
+                    if crate::logical_topology::is_valid(
+                        logical_topology.graph(),
+                        &physical_topology,
+                    )
+                    .is_ok()
+                    {
+                        log::debug!("{:#?}", logical_topology.graph());
 
-                if save_to_dot {
-                    let _ = save_to_dot_file(logical_topology.graph(), "logical_topology.dot");
+                        if save_to_dot {
+                            let _ =
+                                save_to_dot_file(logical_topology.graph(), "logical_topology.dot");
+                        }
+
+                        logical_topology
+                    } else {
+                        crate::logical_topology::LogicalTopology::default()
+                    }
                 }
-
-                logical_topology
-            } else {
-                crate::logical_topology::LogicalTopology::default()
-            }
-        } else {
-            crate::logical_topology::LogicalTopology::default()
-        };
+                Err(err) => {
+                    log::info!("logical topology not found: {}", err);
+                    crate::logical_topology::LogicalTopology::default()
+                }
+            };
         crate::network::Network::new(
             physical_topology,
             crate::user_config::FidelityComputer::make(&config.user_config.fidelity_computer),
@@ -162,6 +174,15 @@ impl Simulation {
         let conf = &self.config.user_config;
         let conf_100th = conf.duration / 100.0;
 
+        // create the applications (if a logical topology has been found)
+        if self.network.logical_topology.graph().node_count() > 0 {
+            create_applications(
+                self.config.seed,
+                &self.config.user_config.applications,
+                &mut self.network,
+            );
+        }
+
         // push initial events
         self.events
             .push(Event::new(conf.warmup_period, EventType::WarmupPeriodEnd));
@@ -172,12 +193,6 @@ impl Simulation {
         let logical_topology_found = if initial_network_events.is_empty() {
             0.0_f64
         } else {
-            create_applications(
-                self.config.seed,
-                &self.config.user_config.applications,
-                &mut self.network,
-            );
-
             1.0_f64
         };
         self.update(initial_network_events, vec![]);
@@ -264,6 +279,14 @@ impl Simulation {
         // save final metrics
         self.single
             .one_time("logical_topology_found", logical_topology_found);
+        self.single.one_time(
+            "logical_topology_num_edges",
+            self.network.logical_topology.graph().edge_count() as f64,
+        );
+        self.single.one_time(
+            "logical_topology_possible_edges",
+            self.network.logical_topology.num_possible_logical_edges as f64,
+        );
         self.single.one_time("num_events", num_events as f64);
         self.single
             .one_time("execution_time", real_now.elapsed().as_secs_f64());
@@ -286,47 +309,6 @@ impl Simulation {
     }
 }
 
-/// Find source/destination pairs, depending on the network and configuration.
-fn source_destination_pairs(
-    conf: &crate::user_config::SourceDestPairs,
-    ogs_indices: Vec<u32>,
-    seed: u64,
-) -> Vec<(u32, u32)> {
-    let mut source_dest_pairs = vec![];
-    match conf {
-        crate::user_config::SourceDestPairs::Random(num_applications) => {
-            let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
-            let uniform = rand_distr::Uniform::new(0, ogs_indices.len());
-            for _ in 0..*num_applications {
-                let this_node_id = uniform.sample(&mut rng) as u32;
-                let peer_node_id = loop {
-                    let candidate = uniform.sample(&mut rng) as u32;
-                    if candidate != this_node_id {
-                        break candidate;
-                    }
-                };
-                source_dest_pairs.push((this_node_id, peer_node_id));
-            }
-        }
-        crate::user_config::SourceDestPairs::AllToAll => {
-            for this_node_id in &ogs_indices {
-                for peer_node_id in &ogs_indices {
-                    if this_node_id == peer_node_id {
-                        continue;
-                    }
-                    source_dest_pairs.push((*this_node_id, *peer_node_id));
-                }
-            }
-        }
-        crate::user_config::SourceDestPairs::List(pairs) => {
-            for (this_node_id, peer_node_id) in pairs {
-                source_dest_pairs.push((*this_node_id, *peer_node_id));
-            }
-        }
-    }
-    source_dest_pairs
-}
-
 fn create_applications(
     seed: u64,
     conf: &crate::user_config::Applications,
@@ -339,7 +321,7 @@ fn create_applications(
         crate::user_config::Applications::ConfPing(conf_ping) => {
             let max_requests = conf_ping.max_requests;
             for (this_node_id, peer_node_id) in
-                source_destination_pairs(&conf_ping.source_dest_pairs, ogs_indices, seed)
+                conf_ping.source_dest_pairs.make_pairs(ogs_indices, seed)
             {
                 let this_port = network.nodes[this_node_id as usize].next_port();
                 let peer_port = network.nodes[peer_node_id as usize].next_port();
@@ -367,8 +349,9 @@ fn create_applications(
             }
         }
         crate::user_config::Applications::ConfClientServer(conf_client_server) => {
-            for (this_node_id, peer_node_id) in
-                source_destination_pairs(&conf_client_server.source_dest_pairs, ogs_indices, seed)
+            for (this_node_id, peer_node_id) in conf_client_server
+                .source_dest_pairs
+                .make_pairs(ogs_indices, seed)
             {
                 let this_port = network.nodes[this_node_id as usize].next_port();
                 let peer_port = network.nodes[peer_node_id as usize].next_port();

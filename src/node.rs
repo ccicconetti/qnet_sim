@@ -99,6 +99,15 @@ impl Node {
         logical_topology: std::rc::Rc<crate::logical_topology::LogicalTopology>,
         init_seed: u64,
     ) -> Self {
+        log::debug!(
+            "creating node id {}, properties {:?}, weight {:?}",
+            node_id,
+            properties,
+            logical_topology
+                .graph()
+                .node_weight(node_id.into())
+                .unwrap()
+        );
         Self {
             node_id,
             properties,

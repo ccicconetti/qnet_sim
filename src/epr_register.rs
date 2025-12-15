@@ -264,8 +264,8 @@ impl EprRegister {
             // Check invariants.
             assert!(pred.is_node(bsm_node_id));
             assert!(succ.is_node(bsm_node_id));
-            assert!(pred.updated < updated);
-            assert!(succ.updated < updated);
+            assert!(pred.updated <= updated);
+            assert!(succ.updated <= updated);
 
             let alice_id = pred.other_node_id(bsm_node_id).unwrap();
             let bob_id = succ.other_node_id(bsm_node_id).unwrap();

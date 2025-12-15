@@ -3,7 +3,7 @@
 
 pub mod chain_params;
 pub mod fidelity_computer;
-pub mod file_params;
+// pub mod file_params;
 pub mod grid_params;
 pub mod static_fidelities;
 #[cfg(test)]
@@ -41,6 +41,8 @@ pub struct NodeWeight {
     pub label: Option<String>,
     /// Node type.
     pub node_type: NodeType,
+    /// True if this node can perform entanglement swapping.
+    pub is_repeater: bool,
     /// Number of memory qubits.
     pub memory_qubits: u32,
     /// Fidelity decay rate of a qubit in memory.
@@ -81,6 +83,7 @@ impl NodeWeight {
         Self {
             label: None,
             node_type: NodeType::SAT,
+            is_repeater: true,
             memory_qubits: 1,
             decay_rate: 0.0,
             swapping_success_prob: 1.0,
@@ -96,6 +99,7 @@ impl NodeWeight {
         Self {
             label: None,
             node_type: NodeType::OGS,
+            is_repeater: false,
             memory_qubits: 1,
             decay_rate: 0.0,
             swapping_success_prob: 1.0,

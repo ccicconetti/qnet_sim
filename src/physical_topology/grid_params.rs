@@ -105,7 +105,7 @@ impl super::PhysicalTopologyParams for GridParams {
 
         let orbit_weight = super::EdgeWeight {
             distance: self.orbit_to_orbit_distance,
-            elevation: rng.gen_range(self.elevation_min..=self.elevation_max),
+            elevation: 0.0,
         };
         for i in 0..self.num_orbits {
             for j in 0..self.orbit_length {
@@ -129,6 +129,9 @@ impl super::PhysicalTopologyParams for GridParams {
                 for other_ndx in others {
                     assert!(other_ndx < num_sat);
                     if !graph.contains_edge(other_ndx.into(), ndx.into()) {
+                        let mut orbit_weight = orbit_weight.clone();
+                        orbit_weight.elevation =
+                            rng.gen_range(self.elevation_min..=self.elevation_max);
                         graph.add_edge(ndx.into(), other_ndx.into(), orbit_weight);
                     }
                 }
@@ -138,7 +141,7 @@ impl super::PhysicalTopologyParams for GridParams {
         // Add ground-to-orbit edges.
         let ground_weight = super::EdgeWeight {
             distance: self.ground_to_orbit_distance,
-            elevation: rng.gen_range(self.elevation_min..=self.elevation_max),
+            elevation: 0.0,
         };
         for i in 0..=self.num_orbits {
             for j in 0..self.orbit_length {
@@ -163,6 +166,9 @@ impl super::PhysicalTopologyParams for GridParams {
                 for sat_ndx in sats {
                     assert!(sat_ndx < num_sat);
                     if !graph.contains_edge(sat_ndx.into(), ndx.into()) {
+                        let mut ground_weight = ground_weight.clone();
+                        ground_weight.elevation =
+                            rng.gen_range(self.elevation_min..=self.elevation_max);
                         graph.add_edge(ndx.into(), sat_ndx.into(), ground_weight);
                     }
                 }
