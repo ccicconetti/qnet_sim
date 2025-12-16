@@ -46,6 +46,9 @@ struct Args {
     /// Save the samples of time series.
     #[arg(long)]
     save_time_series: bool,
+    /// Print the version number and quit.
+    #[arg(long, default_value_t = false)]
+    version: bool,
 }
 
 #[tokio::main]
@@ -53,6 +56,23 @@ async fn main() -> anyhow::Result<()> {
     env_logger::init();
 
     let args = Args::parse();
+
+    if args.version {
+        println!(
+            "{}.{}.{}{}{} ({})",
+            env!("CARGO_PKG_VERSION_MAJOR"),
+            env!("CARGO_PKG_VERSION_MINOR"),
+            env!("CARGO_PKG_VERSION_PATCH"),
+            if env!("CARGO_PKG_VERSION_PRE").is_empty() {
+                ""
+            } else {
+                "-"
+            },
+            env!("CARGO_PKG_VERSION_PRE"),
+            git_version::git_version!()
+        );
+        return Ok(());
+    }
 
     // If requested, save a template configuration file and quit.
     let conf_path = std::path::Path::new(&args.conf);
