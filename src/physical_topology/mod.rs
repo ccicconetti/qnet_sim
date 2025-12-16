@@ -3,7 +3,7 @@
 
 pub mod chain_params;
 pub mod fidelity_computer;
-// pub mod file_params;
+pub mod file_params;
 pub mod grid_params;
 pub mod static_fidelities;
 #[cfg(test)]
@@ -11,6 +11,7 @@ pub mod tests;
 
 pub use crate::physical_topology::chain_params::ChainParams;
 pub use crate::physical_topology::fidelity_computer::FidelityComputer;
+pub use crate::physical_topology::file_params::FileParams;
 pub use crate::physical_topology::grid_params::GridParams;
 pub use crate::physical_topology::static_fidelities::StaticFidelities;
 
@@ -215,6 +216,18 @@ pub struct PhysicalTopology {
 }
 
 impl PhysicalTopology {
+    pub fn new(
+        params: &dyn PhysicalTopologyParams,
+        sat_weight: NodeWeight,
+        ogs_weight: NodeWeight,
+        seed: u64,
+    ) -> anyhow::Result<Self> {
+        Ok(PhysicalTopology {
+            graph: params.make_graph(sat_weight, ogs_weight, seed)?,
+            paths: std::collections::HashMap::new(),
+        })
+    }
+
     pub fn graph(&self) -> &Graph {
         &self.graph
     }
@@ -308,10 +321,10 @@ pub trait PhysicalTopologyParams {
 
     /// Build a physical topology with all the satellite and ground nodes
     /// having the same given characteristics.
-    fn make_topology(
+    fn make_graph(
         &self,
         sat_weight: NodeWeight,
         ogs_weight: NodeWeight,
         seed: u64,
-    ) -> anyhow::Result<PhysicalTopology>;
+    ) -> anyhow::Result<Graph>;
 }

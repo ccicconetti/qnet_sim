@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: © 2025 Claudio Cicconetti <c.cicconetti@iit.cnr.it>
 // SPDX-License-Identifier: MIT
 
-use crate::physical_topology::{PhysicalTopologyParams, StaticFidelities};
+use crate::physical_topology::StaticFidelities;
 use rand::SeedableRng;
 use rand_distr::Distribution;
 
@@ -72,20 +72,46 @@ impl Default for ConfChain {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ConfFile {
+    pub file_params: crate::physical_topology::FileParams,
+    pub sat_weight: crate::physical_topology::NodeWeight,
+    pub ogs_weight: crate::physical_topology::NodeWeight,
+}
+
+impl Default for ConfFile {
+    fn default() -> Self {
+        Self {
+            file_params: Default::default(),
+            sat_weight: default_sat_weight(),
+            ogs_weight: default_ogs_weight(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum PhysicalTopology {
     Grid(ConfGrid),
     Chain(ConfChain),
+    File(ConfFile),
 }
 
 impl PhysicalTopology {
     pub fn make(&self, seed: u64) -> anyhow::Result<crate::physical_topology::PhysicalTopology> {
         match self {
-            PhysicalTopology::Grid(conf) => conf.grid_params.make_topology(
+            PhysicalTopology::Grid(conf) => crate::physical_topology::PhysicalTopology::new(
+                &conf.grid_params,
                 conf.sat_weight.clone(),
                 conf.ogs_weight.clone(),
                 seed,
             ),
-            PhysicalTopology::Chain(conf) => conf.chain_params.make_topology(
+            PhysicalTopology::Chain(conf) => crate::physical_topology::PhysicalTopology::new(
+                &conf.chain_params,
+                conf.sat_weight.clone(),
+                conf.ogs_weight.clone(),
+                seed,
+            ),
+            PhysicalTopology::File(conf) => crate::physical_topology::PhysicalTopology::new(
+                &conf.file_params,
                 conf.sat_weight.clone(),
                 conf.ogs_weight.clone(),
                 seed,
@@ -109,6 +135,12 @@ impl crate::utils::CsvFriend for PhysicalTopology {
                 crate::utils::struct_to_csv_header(&conf.sat_weight).unwrap(),
                 crate::utils::struct_to_csv_header(&conf.ogs_weight).unwrap(),
             ),
+            PhysicalTopology::File(conf) => format!(
+                "{},{},{}",
+                crate::utils::struct_to_csv_header(&conf.file_params).unwrap(),
+                crate::utils::struct_to_csv_header(&conf.sat_weight).unwrap(),
+                crate::utils::struct_to_csv_header(&conf.ogs_weight).unwrap(),
+            ),
         }
     }
 
@@ -123,6 +155,12 @@ impl crate::utils::CsvFriend for PhysicalTopology {
             PhysicalTopology::Chain(conf) => format!(
                 "{},{},{}",
                 crate::utils::struct_to_csv(&conf.chain_params).unwrap(),
+                crate::utils::struct_to_csv(&conf.sat_weight).unwrap(),
+                crate::utils::struct_to_csv(&conf.ogs_weight).unwrap(),
+            ),
+            PhysicalTopology::File(conf) => format!(
+                "{},{},{}",
+                crate::utils::struct_to_csv(&conf.file_params).unwrap(),
                 crate::utils::struct_to_csv(&conf.sat_weight).unwrap(),
                 crate::utils::struct_to_csv(&conf.ogs_weight).unwrap(),
             ),

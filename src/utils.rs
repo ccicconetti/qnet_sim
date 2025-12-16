@@ -127,6 +127,35 @@ pub fn shuffle<T>(v: &mut Vec<T>, rng: &mut rand::rngs::StdRng) {
     }
 }
 
+pub struct RemoveMeDir {
+    test_dir: std::path::PathBuf,
+}
+
+impl RemoveMeDir {
+    pub fn new(test_name: &str) -> anyhow::Result<Self> {
+        let mut test_dir = std::env::temp_dir();
+        test_dir.push(test_name);
+        println!("temp dir created: {:?}", test_dir);
+        if test_dir.exists() {
+            std::fs::remove_dir_all(test_dir.to_str().unwrap())?;
+        }
+        std::fs::create_dir_all(test_dir.to_str().unwrap())?;
+
+        Ok(RemoveMeDir { test_dir })
+    }
+
+    pub fn dir(&self) -> std::path::PathBuf {
+        self.test_dir.clone()
+    }
+}
+
+impl Drop for RemoveMeDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.test_dir);
+        println!("temp dir deleted: {:?}", self.test_dir);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::utils::{fidelity_decay, fidelity_swapping};

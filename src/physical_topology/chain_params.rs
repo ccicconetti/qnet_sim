@@ -62,12 +62,12 @@ impl super::PhysicalTopologyParams for ChainParams {
 
     /// Build a physical topology consisting of an linear chain of repeaters,
     /// with one OGS at each end.
-    fn make_topology(
+    fn make_graph(
         &self,
         sat_weight: super::NodeWeight,
         ogs_weight: super::NodeWeight,
         seed: u64,
-    ) -> anyhow::Result<super::PhysicalTopology> {
+    ) -> anyhow::Result<super::Graph> {
         let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
 
         self.valid()?;
@@ -128,9 +128,54 @@ impl super::PhysicalTopologyParams for ChainParams {
             }
         }
 
-        Ok(super::PhysicalTopology {
-            graph,
-            paths: std::collections::HashMap::new(),
-        })
+        Ok(graph)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::physical_topology::{ChainParams, NodeWeight, PhysicalTopology};
+
+    #[test]
+    fn test_physical_topology_from_chain() {
+        // Invalid params.
+        assert!(PhysicalTopology::new(
+            &ChainParams {
+                orbit_to_orbit_distance: 3000.0,
+                ground_to_orbit_distance: 1000.0,
+                num_repeaters: 0,
+                elevation_min: 10.0,
+                elevation_max: 60.0
+            },
+            NodeWeight::default_sat(),
+            NodeWeight::default_ogs(),
+            42,
+        )
+        .is_err());
+
+        // Valid 4-satellite chain.
+        let mut graph = PhysicalTopology::new(
+            &ChainParams {
+                orbit_to_orbit_distance: 3000.0,
+                ground_to_orbit_distance: 1000.0,
+                num_repeaters: 4,
+                elevation_min: 10.0,
+                elevation_max: 60.0,
+            },
+            NodeWeight::default_sat(),
+            NodeWeight::default_ogs(),
+            42,
+        )
+        .unwrap();
+
+        assert_eq!((2..6).collect::<Vec<u32>>(), graph.sat_indices());
+        assert_eq!((0..2).collect::<Vec<u32>>(), graph.ogs_indices());
+        assert_eq!(6, graph.graph().node_count());
+        println!("{}", petgraph::dot::Dot::new(&graph.graph));
+        assert_float_eq::assert_f64_near!(11000.0, graph.distance(0, 1).unwrap());
+        assert_float_eq::assert_f64_near!(1000.0, graph.distance(0, 2).unwrap());
+        assert_float_eq::assert_f64_near!(4000.0, graph.distance(0, 3).unwrap());
+        assert_float_eq::assert_f64_near!(7000.0, graph.distance(0, 4).unwrap());
+        assert_float_eq::assert_f64_near!(10000.0, graph.distance(0, 5).unwrap());
     }
 }

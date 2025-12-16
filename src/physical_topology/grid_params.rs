@@ -73,12 +73,12 @@ impl super::PhysicalTopologyParams for GridParams {
     ///
     /// Exactly one station is assigned to each square of 4 satellites (if in
     /// the middle) or pair of satellites (if at the top/bottom).
-    fn make_topology(
+    fn make_graph(
         &self,
         sat_weight: super::NodeWeight,
         ogs_weight: super::NodeWeight,
         seed: u64,
-    ) -> anyhow::Result<super::PhysicalTopology> {
+    ) -> anyhow::Result<super::Graph> {
         let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
 
         self.valid()?;
@@ -175,9 +175,156 @@ impl super::PhysicalTopologyParams for GridParams {
             }
         }
 
-        Ok(super::PhysicalTopology {
-            graph,
-            paths: std::collections::HashMap::new(),
-        })
+        Ok(graph)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::physical_topology::{GridParams, NodeWeight, PhysicalTopologyParams};
+
+    #[test]
+    fn test_physical_topology_from_grid() {
+        // Invalid params
+        assert!(GridParams {
+            orbit_to_orbit_distance: 3000.0,
+            ground_to_orbit_distance: 1000.0,
+            num_orbits: 0,
+            orbit_length: 1,
+            elevation_min: 10.0,
+            elevation_max: 60.0
+        }
+        .make_graph(NodeWeight::default_sat(), NodeWeight::default_ogs(), 42)
+        .is_err());
+        assert!(GridParams {
+            orbit_to_orbit_distance: 3000.0,
+            ground_to_orbit_distance: 1000.0,
+            num_orbits: 1,
+            orbit_length: 0,
+            elevation_min: 10.0,
+            elevation_max: 60.0
+        }
+        .make_graph(NodeWeight::default_sat(), NodeWeight::default_ogs(), 42,)
+        .is_err());
+        assert!(GridParams {
+            orbit_to_orbit_distance: -1.0,
+            ground_to_orbit_distance: 1000.0,
+            num_orbits: 1,
+            orbit_length: 1,
+            elevation_min: 10.0,
+            elevation_max: 60.0
+        }
+        .make_graph(NodeWeight::default_sat(), NodeWeight::default_ogs(), 42,)
+        .is_err());
+        assert!(GridParams {
+            orbit_to_orbit_distance: 1000.0,
+            ground_to_orbit_distance: -1.0,
+            num_orbits: 1,
+            orbit_length: 1,
+            elevation_min: 10.0,
+            elevation_max: 60.0
+        }
+        .make_graph(NodeWeight::default_sat(), NodeWeight::default_ogs(), 42,)
+        .is_err());
+
+        // Valid 1x1 grid
+
+        let graph = crate::physical_topology::PhysicalTopology::new(
+            &GridParams {
+                orbit_to_orbit_distance: 1000.0,
+                ground_to_orbit_distance: 1000.0,
+                num_orbits: 1,
+                orbit_length: 1,
+                elevation_min: 10.0,
+                elevation_max: 60.0,
+            },
+            NodeWeight::default_sat(),
+            NodeWeight::default_ogs(),
+            42,
+        )
+        .unwrap();
+        assert_eq!((0..1).collect::<Vec<u32>>(), graph.sat_indices());
+        assert_eq!((1..3).collect::<Vec<u32>>(), graph.ogs_indices());
+
+        // Valid 1x2 grid
+        let graph = crate::physical_topology::PhysicalTopology::new(
+            &GridParams {
+                orbit_to_orbit_distance: 1000.0,
+                ground_to_orbit_distance: 1000.0,
+                num_orbits: 1,
+                orbit_length: 2,
+                elevation_min: 10.0,
+                elevation_max: 60.0,
+            },
+            NodeWeight::default_sat(),
+            NodeWeight::default_ogs(),
+            42,
+        )
+        .unwrap();
+        assert_eq!((0..2).collect::<Vec<u32>>(), graph.sat_indices());
+        assert_eq!((2..6).collect::<Vec<u32>>(), graph.ogs_indices());
+
+        // Valid 2x1 grid
+        let graph = crate::physical_topology::PhysicalTopology::new(
+            &GridParams {
+                orbit_to_orbit_distance: 1000.0,
+                ground_to_orbit_distance: 1000.0,
+                num_orbits: 2,
+                orbit_length: 1,
+                elevation_min: 10.0,
+                elevation_max: 60.0,
+            },
+            NodeWeight::default_sat(),
+            NodeWeight::default_ogs(),
+            42,
+        )
+        .unwrap();
+        assert_eq!((0..2).collect::<Vec<u32>>(), graph.sat_indices());
+        assert_eq!((2..5).collect::<Vec<u32>>(), graph.ogs_indices());
+
+        // Valid 2x2 grid
+        let graph = crate::physical_topology::PhysicalTopology::new(
+            &GridParams {
+                orbit_to_orbit_distance: 1000.0,
+                ground_to_orbit_distance: 1000.0,
+                num_orbits: 2,
+                orbit_length: 2,
+                elevation_min: 10.0,
+                elevation_max: 60.0,
+            },
+            NodeWeight::default_sat(),
+            NodeWeight::default_ogs(),
+            42,
+        )
+        .unwrap();
+        assert_eq!((0..4).collect::<Vec<u32>>(), graph.sat_indices());
+        assert_eq!((4..10).collect::<Vec<u32>>(), graph.ogs_indices());
+
+        // Valid 4x3 grid
+        let mut graph = crate::physical_topology::PhysicalTopology::new(
+            &GridParams {
+                orbit_to_orbit_distance: 3000.0,
+                ground_to_orbit_distance: 1000.0,
+                num_orbits: 3,
+                orbit_length: 4,
+                elevation_min: 10.0,
+                elevation_max: 60.0,
+            },
+            NodeWeight::default_sat(),
+            NodeWeight::default_ogs(),
+            42,
+        )
+        .unwrap();
+
+        assert_eq!((0..12).collect::<Vec<u32>>(), graph.sat_indices());
+        assert_eq!((12..28).collect::<Vec<u32>>(), graph.ogs_indices());
+        assert_eq!(28, graph.graph().node_count());
+        println!("{}", petgraph::dot::Dot::new(&graph.graph));
+        assert_float_eq::assert_f64_near!(2000.0, graph.distance(0, 1).unwrap());
+        assert_float_eq::assert_f64_near!(4000.0, graph.distance(0, 2).unwrap());
+        assert_float_eq::assert_f64_near!(2000.0, graph.distance(0, 3).unwrap());
+        assert_float_eq::assert_f64_near!(2000.0, graph.distance(0, 4).unwrap());
+        assert_float_eq::assert_f64_near!(4000.0, graph.distance(0, 11).unwrap());
+        assert_float_eq::assert_f64_near!(6000.0, graph.distance(12, 26).unwrap());
     }
 }

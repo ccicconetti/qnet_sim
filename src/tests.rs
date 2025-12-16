@@ -1,19 +1,18 @@
 // SPDX-FileCopyrightText: © 2025 Claudio Cicconetti <c.cicconetti@iit.cnr.it>
 // SPDX-License-Identifier: MIT
 
-use super::physical_topology::PhysicalTopologyParams;
 use rand::SeedableRng;
 
 pub fn physical_topology_2_2() -> crate::physical_topology::PhysicalTopology {
-    crate::physical_topology::GridParams {
-        orbit_to_orbit_distance: 1.0,
-        ground_to_orbit_distance: 1.0,
-        num_orbits: 2,
-        orbit_length: 2,
-        elevation_min: 10.0,
-        elevation_max: 60.0,
-    }
-    .make_topology(
+    crate::physical_topology::PhysicalTopology::new(
+        &crate::physical_topology::GridParams {
+            orbit_to_orbit_distance: 1.0,
+            ground_to_orbit_distance: 1.0,
+            num_orbits: 2,
+            orbit_length: 2,
+            elevation_min: 10.0,
+            elevation_max: 60.0,
+        },
         crate::physical_topology::NodeWeight {
             label: None,
             node_type: crate::physical_topology::NodeType::SAT,
