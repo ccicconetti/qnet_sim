@@ -1,0 +1,67 @@
+{
+  "duration": 20.0,
+  "warmup_period": 0.0,
+  "series_ignore": [
+    "gen-fidelity",
+    "occupancy"
+  ],
+  "sections_not_serialized": [],
+  "physical_topology": {
+    "Grid": {
+      "grid_params": {
+        "orbit_to_orbit_distance": 3000000.0,
+        "ground_to_orbit_distance": 1000000.0,
+        "num_orbits": 3,
+        "orbit_length": 4,
+        "elevation_min": 10.0,
+        "elevation_max": 60.0
+      },
+      "sat_weight": {
+        "label": null,
+        "node_type": "SAT",
+        "is_repeater": true,
+        "memory_qubits": 20,
+        "decay_rate": 1.0,
+        "swapping_success_prob": 0.95,
+        "swapping_duration": 0.001,
+        "correction_duration": 0.0,
+        "detectors": 20,
+        "transmitters": 20,
+        "capacity": 1000.0
+      },
+      "ogs_weight": {
+        "label": null,
+        "node_type": "OGS",
+        "is_repeater": false,
+        "memory_qubits": 10,
+        "decay_rate": 1.0,
+        "swapping_success_prob": 0.0,
+        "swapping_duration": 0.0,
+        "correction_duration": 0.001,
+        "detectors": 10,
+        "transmitters": 0,
+        "capacity": 0.0
+      }
+    }
+  },
+  "fidelity_computer": {
+    "StaticFidelities": {
+      "f_o": 0.99,
+      "f_g": 0.98,
+      "f_oo": 0.97,
+      "f_og": 0.96,
+      "f_gg": 0.95
+    }
+  },
+  "logical_topology": {
+    "physical_to_logical_policy": "RandomGreedy"
+  },
+  "applications": {
+    "ConfPing": {
+      "source_dest_pairs": {
+        "Random": $NUM_PAIRS
+      },
+      "max_requests": 0
+    }
+  }
+}
