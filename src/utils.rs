@@ -119,7 +119,7 @@ fn struct_to_map<T: Serialize>(s: T) -> anyhow::Result<serde_json::Map<String, s
 
 /// Shuffle a container, see:
 /// https://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle
-pub fn shuffle<T>(v: &mut Vec<T>, rng: &mut rand::rngs::StdRng) {
+pub fn shuffle<T>(v: &mut [T], rng: &mut rand::rngs::StdRng) {
     for i in 0..v.len() {
         let i = v.len() - i - 1; // i goes from n-1 to 1
         let j = rng.gen_range(0..=i);

@@ -340,7 +340,7 @@ fn physical_to_logical_random_greedy(
         rates.push((
             e.id(),
             rate_computer.rate(
-                &physical_topology,
+                physical_topology,
                 e.weight().tx,
                 e.source().index() as u32,
                 e.target().index() as u32,
@@ -359,7 +359,7 @@ fn physical_to_logical_random_greedy(
 fn find_paths(logical_graph: &Graph) -> anyhow::Result<Paths> {
     let mut all_paths = std::collections::HashMap::new();
 
-    let repeater_graph = make_repeater_graph(&logical_graph);
+    let repeater_graph = make_repeater_graph(logical_graph);
 
     // Collect all the possible end nodes.
     let endnodes: Vec<u32> = logical_graph

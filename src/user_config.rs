@@ -183,7 +183,7 @@ impl crate::utils::CsvFriend for FidelityComputer {
     fn header(&self) -> String {
         match &self {
             Self::StaticFidelities(conf) => {
-                format!("{}", crate::utils::struct_to_csv_header(&conf).unwrap(),)
+                crate::utils::struct_to_csv_header(conf).unwrap().to_string()
             }
         }
     }
@@ -191,7 +191,7 @@ impl crate::utils::CsvFriend for FidelityComputer {
     fn to_csv(&self) -> String {
         match &self {
             Self::StaticFidelities(conf) => {
-                format!("{}", crate::utils::struct_to_csv(&conf).unwrap(),)
+                crate::utils::struct_to_csv(conf).unwrap().to_string()
             }
         }
     }
@@ -214,7 +214,7 @@ impl crate::utils::CsvFriend for RateComputer {
     fn header(&self) -> String {
         match &self {
             Self::FixedRate(conf) => {
-                format!("{}", crate::utils::struct_to_csv_header(&conf).unwrap(),)
+                crate::utils::struct_to_csv_header(conf).unwrap().to_string()
             }
         }
     }
@@ -222,7 +222,7 @@ impl crate::utils::CsvFriend for RateComputer {
     fn to_csv(&self) -> String {
         match &self {
             Self::FixedRate(conf) => {
-                format!("{}", crate::utils::struct_to_csv(&conf).unwrap(),)
+                crate::utils::struct_to_csv(conf).unwrap().to_string()
             }
         }
     }
@@ -299,8 +299,8 @@ impl SourceDestPairs {
             }
             Self::List(pairs) => {
                 for (this_node_id, peer_node_id) in pairs {
-                    assert!(end_nodes.iter().find(|x| *x == this_node_id).is_some());
-                    assert!(end_nodes.iter().find(|x| *x == peer_node_id).is_some());
+                    assert!(end_nodes.iter().any(|x| x == this_node_id));
+                    assert!(end_nodes.iter().any(|x| x == peer_node_id));
                     source_dest_pairs.push((*this_node_id, *peer_node_id));
                 }
             }
@@ -405,7 +405,7 @@ impl Default for UserConfig {
 
 impl crate::utils::CsvFriend for UserConfig {
     fn header(&self) -> String {
-        let mut ret = format!("duration,warmup_period");
+        let mut ret = "duration,warmup_period".to_string();
         if !self.sections_not_serialized.contains("physical_topology") {
             ret += ",";
             ret += &self.physical_topology.header();

@@ -4,7 +4,7 @@
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 enum InputType {
     #[default]
-    LEO = 0,
+    Leo = 0,
 }
 
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
@@ -58,7 +58,7 @@ impl super::PhysicalTopologyParams for FileParams {
         let mut edges = vec![];
 
         match &self.input_type {
-            InputType::LEO => {
+            InputType::Leo => {
                 #[derive(Debug)]
                 struct Record {
                     node1: u32,
@@ -79,7 +79,7 @@ impl super::PhysicalTopologyParams for FileParams {
                     let line = line.replace("\t", " ");
                     let line = line.trim();
                     let tokens: Vec<&str> = line.split(" ").filter(|x| !x.is_empty()).collect();
-                    if tokens.len() == 0 {
+                    if tokens.is_empty() {
                         continue;
                     }
                     anyhow::ensure!(
@@ -94,11 +94,7 @@ impl super::PhysicalTopologyParams for FileParams {
                         node1: tokens[0].parse::<u32>()?,
                         node2: tokens[1].parse::<u32>()?,
                         distance: tokens[2].parse::<f64>()? * 1000.0_f64,
-                        is_ground_sat: if tokens[3].parse::<u32>()? == 0 {
-                            false
-                        } else {
-                            true
-                        },
+                        is_ground_sat: tokens[3].parse::<u32>()? != 0,
                         elevation: tokens[4].parse::<f64>()?,
                     };
                     all_nodes.insert(record.node1);
@@ -213,7 +209,7 @@ mod tests {
         }
 
         let file_params = FileParams {
-            input_type: super::InputType::LEO,
+            input_type: super::InputType::Leo,
             input_path: path.to_str().unwrap().to_string(),
         };
 

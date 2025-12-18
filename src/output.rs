@@ -370,18 +370,19 @@ pub struct Output {
     pub config_csv: String,
 }
 
+pub struct OutputSaveConf {
+    pub output_path: String,
+    pub append: bool,
+    pub config_csv_header: String,
+    pub additional_header: String,
+    pub additional_fields: String,
+    pub save_config: bool,
+    pub save_time_series: bool,
+}
+
 /// Save all the outputs to files.
-pub fn save_outputs(
-    outputs: Vec<Output>,
-    output_path: &str,
-    append: bool,
-    config_csv_header: &str,
-    additional_header: &str,
-    additional_fields: &str,
-    save_config: bool,
-    save_time_series: bool,
-) -> anyhow::Result<()> {
-    let header_comma = if additional_header.is_empty() {
+pub fn save_outputs(outputs: Vec<Output>, conf: OutputSaveConf) -> anyhow::Result<()> {
+    let header_comma = if conf.additional_header.is_empty() {
         ""
     } else {
         ","
@@ -389,15 +390,19 @@ pub fn save_outputs(
 
     // Open all the files.
     let mut scalar_file = crate::utils::open_output_file(
-        output_path,
+        &conf.output_path,
         "scalar.csv",
-        append,
+        conf.append,
         format!(
             "{}{}{}{}{}",
-            additional_header,
+            conf.additional_header,
             header_comma,
-            if save_config { config_csv_header } else { "" },
-            if save_config { "," } else { "" },
+            if conf.save_config {
+                &conf.config_csv_header
+            } else {
+                ""
+            },
+            if conf.save_config { "," } else { "" },
             outputs.first().unwrap().scalar.header()
         )
         .as_str(),
@@ -411,19 +416,23 @@ pub fn save_outputs(
             }
             let header_common = format!(
                 "{}{}{}{}{}",
-                additional_header,
+                conf.additional_header,
                 header_comma,
-                if save_config { &config_csv_header } else { "" },
-                if save_config { "," } else { "" },
+                if conf.save_config {
+                    &conf.config_csv_header
+                } else {
+                    ""
+                },
+                if conf.save_config { "," } else { "" },
                 elem.headers.join(",")
             );
-            if save_time_series {
+            if conf.save_time_series {
                 series_files.insert(
                     name.clone(),
                     crate::utils::open_output_file(
-                        output_path,
+                        &conf.output_path,
                         format!("{name}.csv").as_str(),
-                        append,
+                        conf.append,
                         format!("{},time,value", header_common).as_str(),
                     )?,
                 );
@@ -431,9 +440,9 @@ pub fn save_outputs(
             series_stats_files.insert(
                 name.clone(),
                 crate::utils::open_output_file(
-                    output_path,
+                    &conf.output_path,
                     format!("{name}-stats.csv").as_str(),
-                    append,
+                    conf.append,
                     format!(
                         "{},count,min,mean,max,stderr,p05,p25,p50,p75,p95",
                         header_common
@@ -446,26 +455,30 @@ pub fn save_outputs(
 
     // Dump the data to files.
     for output in outputs {
-        let config_csv = if save_config { &output.config_csv } else { "" };
-        let config_comma = if save_config { "," } else { "" };
+        let config_csv = if conf.save_config {
+            &output.config_csv
+        } else {
+            ""
+        };
+        let config_comma = if conf.save_config { "," } else { "" };
         writeln!(
             &mut scalar_file,
             "{}{}{}{}{}",
-            additional_fields,
+            conf.additional_fields,
             header_comma,
             config_csv,
             config_comma,
             output.scalar.to_csv()
         )?;
 
-        if save_time_series {
+        if conf.save_time_series {
             for (name, elem) in &output.series.series {
                 if let Some(series_file) = series_files.get_mut(name) {
                     for (labels, time, value) in &elem.values {
                         writeln!(
                             series_file,
                             "{}{}{}{}{},{},{}",
-                            additional_fields,
+                            conf.additional_fields,
                             header_comma,
                             config_csv,
                             config_comma,
@@ -490,7 +503,7 @@ pub fn save_outputs(
                     writeln!(
                         series_stats_file,
                         "{}{}{}{}{},{},{},{},{},{},{}",
-                        additional_fields,
+                        conf.additional_fields,
                         header_comma,
                         config_csv,
                         config_comma,

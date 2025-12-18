@@ -168,13 +168,15 @@ async fn main() -> anyhow::Result<()> {
     if !outputs.is_empty() {
         qnet_ll_sim::output::save_outputs(
             outputs,
-            &args.output_path,
-            args.append,
-            &config_csv_header,
-            &args.additional_header,
-            &args.additional_fields,
-            args.save_config,
-            args.save_time_series,
+            qnet_ll_sim::output::OutputSaveConf {
+                output_path: args.output_path,
+                append: args.append,
+                config_csv_header,
+                additional_header: args.additional_header,
+                additional_fields: args.additional_fields,
+                save_config: args.save_config,
+                save_time_series: args.save_time_series,
+            },
         )?;
     }
 
