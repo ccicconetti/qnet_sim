@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: © 2025 Claudio Cicconetti <c.cicconetti@iit.cnr.it>
 // SPDX-License-Identifier: MIT
 
-use crate::physical_topology::StaticFidelities;
+use crate::physical_topology::{FixedRate, StaticFidelities};
 use rand::SeedableRng;
 use rand_distr::Distribution;
 
@@ -17,7 +17,6 @@ pub fn default_sat_weight() -> crate::physical_topology::NodeWeight {
         correction_duration: 0.0,
         detectors: 10,
         transmitters: 10,
-        capacity: 1000.0,
     }
 }
 
@@ -33,7 +32,6 @@ pub fn default_ogs_weight() -> crate::physical_topology::NodeWeight {
         correction_duration: 0.001,
         detectors: 10,
         transmitters: 0,
-        capacity: 0.0,
     }
 }
 
@@ -200,6 +198,37 @@ impl crate::utils::CsvFriend for FidelityComputer {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub enum RateComputer {
+    FixedRate(crate::physical_topology::FixedRate),
+}
+
+impl RateComputer {
+    pub fn make(&self) -> Box<dyn crate::physical_topology::RateComputer> {
+        match self {
+            Self::FixedRate(conf) => Box::new(conf.clone()),
+        }
+    }
+}
+
+impl crate::utils::CsvFriend for RateComputer {
+    fn header(&self) -> String {
+        match &self {
+            Self::FixedRate(conf) => {
+                format!("{}", crate::utils::struct_to_csv_header(&conf).unwrap(),)
+            }
+        }
+    }
+
+    fn to_csv(&self) -> String {
+        match &self {
+            Self::FixedRate(conf) => {
+                format!("{}", crate::utils::struct_to_csv(&conf).unwrap(),)
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct LogicalTopology {
     pub physical_to_logical_policy: crate::logical_topology::PhysicalToLogicalPolicy,
 }
@@ -350,6 +379,8 @@ pub struct UserConfig {
     pub physical_topology: PhysicalTopology,
     /// The fidelity computer.
     pub fidelity_computer: FidelityComputer,
+    /// The rate computer.
+    pub rate_computer: RateComputer,
     /// The logical topology configuration.
     pub logical_topology: LogicalTopology,
     /// The applications.
@@ -365,6 +396,7 @@ impl Default for UserConfig {
             sections_not_serialized: std::collections::HashSet::new(),
             physical_topology: PhysicalTopology::Grid(ConfGrid::default()),
             fidelity_computer: FidelityComputer::StaticFidelities(StaticFidelities::default()),
+            rate_computer: RateComputer::FixedRate(FixedRate::default()),
             logical_topology: LogicalTopology::default(),
             applications: Applications::default(),
         }

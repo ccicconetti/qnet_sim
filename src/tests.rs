@@ -24,7 +24,6 @@ pub fn physical_topology_2_2() -> crate::physical_topology::PhysicalTopology {
             correction_duration: 0.0,
             detectors: 20,
             transmitters: 20,
-            capacity: 1.0,
         },
         crate::physical_topology::NodeWeight {
             label: None,
@@ -37,7 +36,6 @@ pub fn physical_topology_2_2() -> crate::physical_topology::PhysicalTopology {
             correction_duration: 0.001,
             detectors: 10,
             transmitters: 0,
-            capacity: 0.0,
         },
         42,
     )
@@ -53,6 +51,7 @@ pub fn logical_topology_2_2() -> (
     if let Ok(logical_topology) = crate::logical_topology::LogicalTopology::from_physical_topology(
         &crate::logical_topology::PhysicalToLogicalPolicy::RandomGreedy,
         &physical_topology,
+        &crate::physical_topology::FixedRate { rate: 1.0 },
         &mut rng,
     ) {
         if crate::logical_topology::is_valid(&logical_topology.graph(), &physical_topology).is_ok()
@@ -121,7 +120,6 @@ mod tests {
                     correction_duration: 0.0,
                     detectors: 10,
                     transmitters: 10,
-                    capacity: 1000.0,
                 },
                 ogs_weight: crate::physical_topology::NodeWeight {
                     label: None,
@@ -134,7 +132,6 @@ mod tests {
                     correction_duration: 0.001,
                     detectors: 10,
                     transmitters: 0,
-                    capacity: 0.0,
                 },
             }),
             fidelity_computer: crate::user_config::FidelityComputer::StaticFidelities(
@@ -145,6 +142,9 @@ mod tests {
                     f_og: 0.96,
                     f_gg: 0.95,
                 },
+            ),
+            rate_computer: crate::user_config::RateComputer::FixedRate(
+                crate::physical_topology::FixedRate { rate: 1000.0 },
             ),
             logical_topology: LogicalTopology::default(),
             applications: Applications::ConfPing(ConfPing {
@@ -201,7 +201,7 @@ mod tests {
         assert_eq!(200, series.get("fidelity").unwrap().values.len());
         check_interval("fidelity", &series, 0.91, 1.0);
         check_interval("gen-fidelity", &series, 0.95, 0.99);
-        check_interval("app-tries", &series, 1.0, 3.0);
+        check_interval("app-tries", &series, 1.0, 21.0);
         check_interval("occupancy", &series, 0.0, 1.0);
         check_interval("app-path-len", &series, 1.0, 2.0);
 

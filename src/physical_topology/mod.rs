@@ -4,7 +4,9 @@
 pub mod chain_params;
 pub mod fidelity_computer;
 pub mod file_params;
+pub mod fixed_rate;
 pub mod grid_params;
+pub mod rate_computer;
 pub mod static_fidelities;
 #[cfg(test)]
 pub mod tests;
@@ -12,7 +14,9 @@ pub mod tests;
 pub use crate::physical_topology::chain_params::ChainParams;
 pub use crate::physical_topology::fidelity_computer::FidelityComputer;
 pub use crate::physical_topology::file_params::FileParams;
+pub use crate::physical_topology::fixed_rate::FixedRate;
 pub use crate::physical_topology::grid_params::GridParams;
+pub use crate::physical_topology::rate_computer::RateComputer;
 pub use crate::physical_topology::static_fidelities::StaticFidelities;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -58,9 +62,6 @@ pub struct NodeWeight {
     pub detectors: u32,
     /// Number of transmitters, i.e., entangled photon source generators.
     pub transmitters: u32,
-    /// Capacity of transmitters, i.e., rate at which they generate
-    /// EPR pairs.
-    pub capacity: f64,
 }
 
 impl std::fmt::Display for NodeWeight {
@@ -92,7 +93,6 @@ impl NodeWeight {
             correction_duration: 0.0,
             detectors: 1,
             transmitters: 1,
-            capacity: 1.0,
         }
     }
 
@@ -108,7 +108,6 @@ impl NodeWeight {
             correction_duration: 0.001,
             detectors: 1,
             transmitters: 0,
-            capacity: 0.0,
         }
     }
 
@@ -140,9 +139,6 @@ impl NodeWeight {
                 "invalid swapping success probability ({})",
                 self.swapping_success_prob
             ))
-        }
-        if self.capacity < 0.0 {
-            errors.push(format!("capacity ({}) < 0", self.capacity))
         }
 
         if !errors.is_empty() {

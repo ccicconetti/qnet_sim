@@ -54,6 +54,9 @@ impl Simulation {
     ) -> crate::network::Network {
         let mut rng = rand::rngs::StdRng::seed_from_u64(config.seed);
 
+        let rate_computer =
+            crate::user_config::RateComputer::make(&config.user_config.rate_computer);
+
         let logical_topology =
             match crate::logical_topology::LogicalTopology::from_physical_topology(
                 &config
@@ -61,6 +64,7 @@ impl Simulation {
                     .logical_topology
                     .physical_to_logical_policy,
                 &physical_topology,
+                rate_computer.as_ref(),
                 &mut rng,
             ) {
                 Ok(logical_topology) => {
@@ -95,6 +99,7 @@ impl Simulation {
         crate::network::Network::new(
             physical_topology,
             crate::user_config::FidelityComputer::make(&config.user_config.fidelity_computer),
+            rate_computer,
             std::rc::Rc::new(logical_topology),
             config.seed,
         )

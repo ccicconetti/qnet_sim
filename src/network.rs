@@ -54,6 +54,8 @@ pub struct Network {
     pub physical_topology: crate::physical_topology::PhysicalTopology,
     /// The fidelity computer.
     pub fidelity_computer: Box<dyn crate::physical_topology::FidelityComputer>,
+    /// The rate computer.
+    pub rate_computer: Box<dyn crate::physical_topology::RateComputer>,
     /// The logical topology.
     pub logical_topology: std::rc::Rc<crate::logical_topology::LogicalTopology>,
     /// Pseudo-random number generator.
@@ -65,6 +67,7 @@ impl Network {
     pub fn new(
         physical_topology: crate::physical_topology::PhysicalTopology,
         fidelity_computer: Box<dyn crate::physical_topology::FidelityComputer>,
+        rate_computer: Box<dyn crate::physical_topology::RateComputer>,
         logical_topology: std::rc::Rc<crate::logical_topology::LogicalTopology>,
         init_seed: u64,
     ) -> Self {
@@ -118,7 +121,7 @@ impl Network {
                     tx_node_id: edge.weight().tx,
                     master_node_id,
                     slave_node_id,
-                    rv: rand_distr::Exp::new(edge.weight().capacity)
+                    rv: rand_distr::Exp::new(edge.weight().rate)
                         .expect("could not create an expo rv"),
                     rng: rand::rngs::StdRng::seed_from_u64(next_seed),
                 });
@@ -132,6 +135,7 @@ impl Network {
             epr_register,
             physical_topology,
             fidelity_computer,
+            rate_computer,
             logical_topology,
             rng: rand::rngs::StdRng::seed_from_u64(next_seed),
         }
@@ -410,6 +414,7 @@ mod tests {
         let network = Network::new(
             physical_topology,
             Box::new(crate::physical_topology::StaticFidelities::default()),
+            Box::new(crate::physical_topology::FixedRate::default()),
             std::rc::Rc::new(logical_topology),
             42,
         );

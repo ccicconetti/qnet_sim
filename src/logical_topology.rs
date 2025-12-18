@@ -3,8 +3,6 @@
 
 use petgraph::visit::{EdgeRef, IntoNodeReferences};
 
-const NEGLIGIBLE_AMOUNT: f64 = 1e-5;
-
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum PhysicalToLogicalPolicy {
     RandomGreedy,
@@ -32,8 +30,8 @@ pub struct EdgeWeight {
     pub tx: u32,
     /// Number of memory qubits reserved for this link.
     pub memory_qubits: u32,
-    /// Capacity of tx, i.e., rate at which it generates EPR pairs.
-    pub capacity: f64,
+    /// Transmittion rate at which a node generates EPR pairs.
+    pub rate: f64,
     /// Cost of the edge, to compute shortest distance.
     pub cost: usize,
 }
@@ -43,7 +41,7 @@ impl std::fmt::Display for EdgeWeight {
         write!(
             f,
             "tx {}, mem {}, cap {}",
-            self.tx, self.memory_qubits, self.capacity
+            self.tx, self.memory_qubits, self.rate
         )
     }
 }
@@ -53,7 +51,7 @@ impl petgraph::algo::FloatMeasure for EdgeWeight {
         Self {
             tx: 0,
             memory_qubits: 0,
-            capacity: 0.0,
+            rate: 0.0,
             cost: 0,
         }
     }
@@ -62,7 +60,7 @@ impl petgraph::algo::FloatMeasure for EdgeWeight {
         Self {
             tx: 0,
             memory_qubits: 0,
-            capacity: 0.0,
+            rate: 0.0,
             cost: usize::MAX / 2,
         }
     }
@@ -75,7 +73,7 @@ impl std::ops::Add for EdgeWeight {
         EdgeWeight {
             tx: 0,
             memory_qubits: 0,
-            capacity: 0.0,
+            rate: 0.0,
             cost: self.cost + rhs.cost,
         }
     }
@@ -87,7 +85,7 @@ type Paths = std::collections::HashMap<(u32, u32), Vec<u32>>; // s,d -> path
 /// Undirected graph representing the logical topology of the network.
 ///
 /// An edge is present if two nodes are receiving EPR pairs by an entangled
-/// source generator with some non-zero capacity.
+/// source generator with some non-zero rate.
 /// Both the receiving nodes consume one detector for this purpose and
 /// a number of memory qubits.
 /// The egress node of the edge is the master, the ingress one is the slave.
@@ -143,14 +141,18 @@ impl LogicalTopology {
     pub fn from_physical_topology(
         policy: &PhysicalToLogicalPolicy,
         physical_topology: &crate::physical_topology::PhysicalTopology,
+        rate_computer: &dyn crate::physical_topology::RateComputer,
         rng: &mut rand::rngs::StdRng,
     ) -> anyhow::Result<Self> {
         let possible_logical_edges = find_possible_logical_edges(physical_topology);
         let num_possible_logical_edges = possible_logical_edges.len();
         let graph = match policy {
-            PhysicalToLogicalPolicy::RandomGreedy => {
-                physical_to_logical_random_greedy(physical_topology, possible_logical_edges, rng)?
-            }
+            PhysicalToLogicalPolicy::RandomGreedy => physical_to_logical_random_greedy(
+                physical_topology,
+                rate_computer,
+                possible_logical_edges,
+                rng,
+            )?,
         };
         let paths = find_paths(&graph)?;
         Ok(Self {
@@ -195,6 +197,7 @@ macro_rules! weight {
 /// Return the logical graph.
 fn physical_to_logical_random_greedy(
     physical_topology: &crate::physical_topology::PhysicalTopology,
+    rate_computer: &dyn crate::physical_topology::RateComputer,
     possible_logical_edges: Vec<LogicalEdge>,
     rng: &mut rand::rngs::StdRng,
 ) -> anyhow::Result<Graph> {
@@ -275,7 +278,7 @@ fn physical_to_logical_random_greedy(
             EdgeWeight {
                 tx: logical_edge.tx,
                 memory_qubits: 1,
-                capacity: 0.0,
+                rate: 0.0,
                 cost: 1,
             },
         );
@@ -329,31 +332,23 @@ fn physical_to_logical_random_greedy(
         std::mem::swap(&mut candidate_edges, &mut candidate_edges_new);
     }
 
-    // Assign logical edge capacities, by dividing evenly for each node
-    // between the number of logical edges crossing that node.
-    for (u, w) in physical_graph.node_references() {
-        let u_ndx = u.index() as u32;
+    // Assign logical edge rates.
+    let mut rates = vec![];
+    for e in logical_graph.edge_references() {
+        assert_eq!(f64::default(), e.weight().rate);
 
-        // Count how many logical edges are served by this node as the tx.
-        let num_served = logical_graph
-            .edge_references()
-            .filter(|e| e.weight().tx == u_ndx)
-            .count();
-
-        // Skip edges that do not serve as tx.
-        if num_served == 0 {
-            continue;
-        }
-
-        // Divide equally the capacity between logical edges.
-        let even_capacity = w.capacity / num_served as f64;
-
-        // Assign it to all the logical edges.
-        for w in logical_graph.edge_weights_mut() {
-            if w.tx == u_ndx {
-                w.capacity = even_capacity;
-            }
-        }
+        rates.push((
+            e.id(),
+            rate_computer.rate(
+                &physical_topology,
+                e.weight().tx,
+                e.source().index() as u32,
+                e.target().index() as u32,
+            )?,
+        ));
+    }
+    for (e_id, rate) in rates {
+        logical_graph.edge_weight_mut(e_id).unwrap().rate = rate;
     }
 
     Ok(logical_graph)
@@ -468,8 +463,7 @@ fn find_path(
 /// A logical topology is valid if:
 ///
 /// - each edge appears at most once between any two nodes
-/// - each edge has non-vanishing memory qubits and capacity
-/// - the sum of the capacity of transmitters is not exceeded
+/// - each edge has non-vanishing memory qubits and rate
 /// - the cumulative number of memory qubits of physical nodes is not exceeded
 /// - the number of tx per node is not exceeded
 /// - the number of rx per node is not exceeded
@@ -492,11 +486,7 @@ pub fn is_valid(
             e.source().index(),
             e.target().index()
         );
-        anyhow::ensure!(
-            e.weight().capacity > 0.0,
-            "vanishing capacity for edge {:?}",
-            e
-        );
+        anyhow::ensure!(e.weight().rate > 0.0, "vanishing rate for edge {:?}", e);
         anyhow::ensure!(
             e.weight().memory_qubits > 0,
             "vanishing number of qubits for edge {:?}",
@@ -505,18 +495,6 @@ pub fn is_valid(
     }
     for (u, w) in physical_topology.graph().node_references() {
         let u_ndx = u.index() as u32;
-        let sum_capacity: f64 = logical_topology
-            .edge_weights()
-            .filter(|e| e.tx == u_ndx)
-            .map(|e| e.capacity)
-            .sum();
-        anyhow::ensure!(
-            w.capacity >= sum_capacity || (sum_capacity - w.capacity) < NEGLIGIBLE_AMOUNT,
-            "tx capacity of node {} exceeded: {} > {}",
-            u_ndx,
-            sum_capacity,
-            w.capacity
-        );
 
         let sum_memory_qubits: u32 = logical_topology
             .edge_references()
@@ -561,7 +539,7 @@ pub fn is_valid(
 /// Find all possible logical edges in a given physical topology.
 ///
 /// Add two edges for each pair of nodes (u,v) that have at least one detector
-/// and can be reached by a transmitter tx with non-zero capacity.
+/// and can be reached by a transmitter tx.
 ///
 /// Return a vector of tuples (tx,u,v).
 fn find_possible_logical_edges(
@@ -623,6 +601,7 @@ mod tests {
         let logical_topology = LogicalTopology::from_physical_topology(
             &PhysicalToLogicalPolicy::RandomGreedy,
             &physical_topology,
+            &crate::physical_topology::FixedRate { rate: 1.0 },
             &mut rng,
         )
         .expect("could not create the logical topology");
@@ -687,9 +666,12 @@ mod tests {
         let physical_topology = physical_topology_2_2();
         let possible_logical_edges = find_possible_logical_edges(&physical_topology);
         assert_eq!(168, possible_logical_edges.len());
-        if let Ok(logical_graph) =
-            physical_to_logical_random_greedy(&physical_topology, possible_logical_edges, &mut rng)
-        {
+        if let Ok(logical_graph) = physical_to_logical_random_greedy(
+            &physical_topology,
+            &crate::physical_topology::FixedRate { rate: 1.0 },
+            possible_logical_edges,
+            &mut rng,
+        ) {
             for e in logical_graph.edge_references() {
                 println!(
                     "{} -> {}, {:?}",
