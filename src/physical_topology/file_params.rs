@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
-enum InputType {
+pub enum InputType {
     #[default]
     Leo = 0,
 }
@@ -10,9 +10,9 @@ enum InputType {
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct FileParams {
     /// Input file type.
-    input_type: InputType,
+    pub input_type: InputType,
     /// Input file path.
-    input_path: String,
+    pub input_path: String,
 }
 
 impl super::PhysicalTopologyParams for FileParams {
