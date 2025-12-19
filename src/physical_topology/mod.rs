@@ -6,6 +6,7 @@ pub mod fidelity_computer;
 pub mod file_params;
 pub mod fixed_rate;
 pub mod grid_params;
+pub mod leo_fidelities;
 pub mod rate_computer;
 pub mod static_fidelities;
 #[cfg(test)]

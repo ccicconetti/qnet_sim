@@ -53,7 +53,7 @@
   },
   "rate_computer": {
     "FixedRate": {
-      "rate": 1000.0
+      "rate": 100.0
     }
   },
   "logical_topology": {
