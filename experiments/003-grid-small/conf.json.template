@@ -26,8 +26,7 @@
         "swapping_duration": 0.001,
         "correction_duration": 0.0,
         "detectors": 20,
-        "transmitters": 20,
-        "capacity": 1000.0
+        "transmitters": 20
       },
       "ogs_weight": {
         "label": null,
@@ -39,8 +38,7 @@
         "swapping_duration": 0.0,
         "correction_duration": 0.001,
         "detectors": 10,
-        "transmitters": 0,
-        "capacity": 0.0
+        "transmitters": 0
       }
     }
   },
@@ -51,6 +49,11 @@
       "f_oo": 0.97,
       "f_og": 0.96,
       "f_gg": 0.95
+    }
+  },
+  "rate_computer": {
+    "FixedRate": {
+      "rate": 1000.0
     }
   },
   "logical_topology": {
