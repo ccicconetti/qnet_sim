@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: © 2025 Claudio Cicconetti <c.cicconetti@iit.cnr.it>
 // SPDX-License-Identifier: MIT
 
+use rand_distr::num_traits::Inv;
+
 /// Fidelities depending on the physical characteristics of the LEO link.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct LeoFidelities {
@@ -33,6 +35,8 @@ pub struct LeoFidelities {
     b_f: f64,
     /// Time filter bandwidth, $\Delta t = 1/f$.
     delta_t: f64,
+    /// Frequency of the background photons.
+    nu: f64,
 }
 
 impl Default for LeoFidelities {
@@ -48,11 +52,51 @@ impl Default for LeoFidelities {
             m_square: 3.0,
             beta: 1.1,
             f_0: 0.98,
-            h_b: 1.5e-6,
+            h_b: 1e3,
             omega_fov: 20e-6_f64.powf(2.0),
             b_f: 0.5e-9,
-            delta_t: 1.0 / 20.0e6,
+            delta_t: 20.0e6.inv(),
+            nu: physical_constants::SPEED_OF_LIGHT_IN_VACUUM / 580e-9,
         }
+    }
+}
+
+impl LeoFidelities {
+    /// Compute he  probability that the detection was due to a signal photon.
+    ///
+    /// Parameters
+    /// - `distance`: distance from transmitter to receiver, in m
+    /// - `elevation`: angle between transmitter and receiver, in degrees
+    ///
+    fn mu(&self, distance: f64, elevation: f64) -> f64 {
+        let z_r = std::f64::consts::PI * self.w_0.powf(2.0) / self.lambda;
+        let w =
+            self.w_0 * ((1.0 + ((self.m_square * distance / z_r) as f64).powf(2.0)) as f64).sqrt();
+        let chi_est = (-self.beta / (elevation * std::f64::consts::PI / 180.0).cos()).exp();
+        let eta_t = 1.0 - ((-2.0 * self.r_ogs.powf(2.0) / w.powf(2.0)) as f64).exp();
+        let eta_g = eta_t * chi_est;
+
+        // Number of signal photons per time window that we expect to observe
+        // (proportional to the transmittance of the channel).
+        let ns = self.p_s * eta_g * self.eta_d;
+
+        // Expected number of environmental photons in the same time window.
+        let nn = (self.h_b / (physical_constants::PLANCK_CONSTANT * self.nu))
+            * self.omega_fov
+            * std::f64::consts::PI
+            * self.r_ogs.powf(2.0)
+            * self.b_f
+            * self.delta_t;
+
+        // println!("chi_est {chi_est}");
+        // println!("eta_t {eta_t}");
+        // println!("z_r {z_r}");
+        // println!("w {w}");
+        // println!("eta_g {eta_g}");
+        // println!("ns {ns}");
+        // println!("nn {nn}");
+
+        ns / (ns + nn)
     }
 }
 
@@ -66,13 +110,63 @@ impl super::FidelityComputer for LeoFidelities {
     ) -> anyhow::Result<f64> {
         super::fidelity_computer::topology_checks(topology, tx, u, v)?;
 
-        match super::fidelity_computer::link_type(topology, tx, u, v)? {
-            super::fidelity_computer::LinkType::OneOrbitOrbit => Ok(self.f_0),
-            super::fidelity_computer::LinkType::OneOrbitGround => todo!(),
-            super::fidelity_computer::LinkType::TwoOrbitOrbit => todo!(),
-            super::fidelity_computer::LinkType::TwoOrbitGround => todo!(),
-            super::fidelity_computer::LinkType::TwoGroundGround => todo!(),
-        }
+        // mu1 and mu2 are the probabilities that the detection was due to a
+        // signal photon on the first and second link, respectively.
+        let (mu1, mu2) = match super::fidelity_computer::link_type(topology, tx, u, v)? {
+            super::fidelity_computer::LinkType::OneOrbitOrbit => (1.0, 1.0),
+            super::fidelity_computer::LinkType::OneOrbitGround => {
+                assert!(tx == u || tx == v);
+                let edge = topology
+                    .graph
+                    .edge_weight(topology.graph.find_edge(u.into(), v.into()).unwrap())
+                    .unwrap();
+
+                (self.mu(edge.distance, edge.elevation), 1.0)
+            }
+            super::fidelity_computer::LinkType::TwoOrbitOrbit => (1.0, 1.0),
+            super::fidelity_computer::LinkType::TwoOrbitGround => {
+                let ogs_node = if matches!(
+                    topology.graph.node_weight(u.into()).unwrap().node_type,
+                    super::NodeType::OGS
+                ) {
+                    u
+                } else {
+                    assert!(matches!(
+                        topology.graph.node_weight(v.into()).unwrap().node_type,
+                        super::NodeType::OGS
+                    ));
+                    v
+                };
+                let edge = topology
+                    .graph
+                    .edge_weight(
+                        topology
+                            .graph
+                            .find_edge(ogs_node.into(), tx.into())
+                            .unwrap(),
+                    )
+                    .unwrap();
+
+                (self.mu(edge.distance, edge.elevation), 1.0)
+            }
+            super::fidelity_computer::LinkType::TwoGroundGround => {
+                let edge1 = topology
+                    .graph
+                    .edge_weight(topology.graph.find_edge(u.into(), tx.into()).unwrap())
+                    .unwrap();
+                let edge2 = topology
+                    .graph
+                    .edge_weight(topology.graph.find_edge(v.into(), tx.into()).unwrap())
+                    .unwrap();
+
+                (
+                    self.mu(edge1.distance, edge1.elevation),
+                    self.mu(edge2.distance, edge2.elevation),
+                )
+            }
+        };
+
+        Ok(self.f_0 * mu1 * mu2 + (1.0 - mu1 * mu2) * 0.25)
     }
 
     fn valid(&self) -> anyhow::Result<()> {
@@ -93,6 +187,7 @@ impl super::FidelityComputer for LeoFidelities {
             (&self.omega_fov, "omega_fov"),
             (&self.b_f, "b_f"),
             (&self.delta_t, "delta_t"),
+            (&self.nu, "nu"),
         ];
 
         for (var, name) in expected_positive_values {
@@ -117,17 +212,18 @@ mod tests {
     use super::*;
     use crate::physical_topology::FidelityComputer;
     use crate::physical_topology::{NodeType, PhysicalTopology};
+    use std::io::Write;
 
     #[test]
     fn test_leo_fidelities() {
         let fidelities = LeoFidelities::default();
 
         let mut topo = PhysicalTopology::from_distances(vec![
-            (0, 1, 1.0),
-            (0, 2, 1.0),
-            (0, 3, 1.0),
-            (0, 4, 1.0),
-            (4, 5, 1.0),
+            (0, 1, 200000.0),
+            (0, 2, 200000.0),
+            (0, 3, 200000.0),
+            (0, 4, 200000.0),
+            (4, 5, 200000.0),
         ]);
 
         topo.graph.node_weight_mut(0.into()).unwrap().node_type = NodeType::SAT;
@@ -138,18 +234,44 @@ mod tests {
         topo.graph.node_weight_mut(5.into()).unwrap().node_type = NodeType::SAT;
 
         assert_eq!(fidelities.f_0, fidelities.fidelity(&topo, 0, 0, 3).unwrap());
-        // assert_eq!(fidelities.f_g, fidelities.fidelity(&topo, 0, 0, 1).unwrap());
-        // assert_eq!(
-        //     fidelities.f_oo,
-        //     fidelities.fidelity(&topo, 0, 3, 4).unwrap()
-        // );
-        // assert_eq!(
-        //     fidelities.f_og,
+        println!("{}", fidelities.fidelity(&topo, 0, 0, 1).unwrap());
+        println!("{}", fidelities.fidelity(&topo, 0, 1, 3).unwrap());
+        println!("{}", fidelities.fidelity(&topo, 0, 1, 2).unwrap());
+
+        // assert_float_eq::assert_f64_near!(0.25, fidelities.fidelity(&topo, 0, 0, 1).unwrap());
+        assert_eq!(fidelities.f_0, fidelities.fidelity(&topo, 0, 3, 4).unwrap());
+        // assert_float_eq::assert_f64_near!(
+        //     0.25,
         //     fidelities.fidelity(&topo, 0, 1, 3).unwrap()
         // );
-        // assert_eq!(
-        //     fidelities.f_gg,
+        // assert_float_eq::assert_f64_near!(
+        //     0.25,
         //     fidelities.fidelity(&topo, 0, 1, 2).unwrap()
         // );
+    }
+
+    #[ignore]
+    #[test]
+    fn print_leo_fidelities() {
+        let conf = LeoFidelities::default();
+
+        let mut outfile = std::fs::OpenOptions::new()
+            .write(true)
+            .append(false)
+            .create(true)
+            .truncate(true)
+            .open("fidelities.csv")
+            .unwrap();
+
+        let _ = writeln!(outfile, "elevation_degrees,distance_km,fidelity");
+        for elevation in 1..6 {
+            let elevation = elevation * 10;
+            for distance in 1..10 {
+                let distance = distance * 100;
+                let mu = conf.mu(distance as f64 * 1000.0, elevation as f64);
+                let fidelity = mu * conf.f_0 + (1.0 - mu) * 0.25;
+                let _ = writeln!(outfile, "{},{},{}", elevation, distance, fidelity);
+            }
+        }
     }
 }
