@@ -52,7 +52,7 @@ impl Default for LeoFidelities {
             m_square: 3.0,
             beta: 1.1,
             f_0: 0.98,
-            h_b: 1e3,
+            h_b: 1e6,
             omega_fov: 20e-6_f64.powf(2.0),
             b_f: 0.5e-9,
             delta_t: 20.0e6.inv(),
@@ -263,14 +263,24 @@ mod tests {
             .open("fidelities.csv")
             .unwrap();
 
-        let _ = writeln!(outfile, "elevation_degrees,distance_km,fidelity");
+        let h_b_values =
+            std::collections::HashMap::from([("clear night", 1e3), ("clear day", 1e6)]);
+        let _ = writeln!(outfile, "elevation_degrees,h_b,distance_km,fidelity");
         for elevation in 1..6 {
             let elevation = elevation * 10;
             for distance in 1..10 {
                 let distance = distance * 100;
-                let mu = conf.mu(distance as f64 * 1000.0, elevation as f64);
-                let fidelity = mu * conf.f_0 + (1.0 - mu) * 0.25;
-                let _ = writeln!(outfile, "{},{},{}", elevation, distance, fidelity);
+                for (h_b_label, h_b_value) in &h_b_values {
+                    let mut conf = conf.clone();
+                    conf.h_b = *h_b_value;
+                    let mu = conf.mu(distance as f64 * 1000.0, elevation as f64);
+                    let fidelity = mu * conf.f_0 + (1.0 - mu) * 0.25;
+                    let _ = writeln!(
+                        outfile,
+                        "{},{},{},{}",
+                        elevation, h_b_label, distance, fidelity
+                    );
+                }
             }
         }
     }

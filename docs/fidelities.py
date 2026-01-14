@@ -11,19 +11,22 @@ import pandas as pd
 
 df = pd.read_csv(f"fidelities.csv")
 
-fig, ax = plt.subplots()
-sns.lineplot(
-    df,
-    x="distance_km",
-    y="fidelity",
-    hue="elevation_degrees",
-    ax=ax,
-    style="elevation_degrees",
-    markers=True,
-    dashes=False,
-)
-ax.grid(visible=True)
-ax.set_ylabel("Generation fidelity")
-ax.set_xlabel("Distance (km)")
-fig.suptitle(f"")
-plt.savefig(f"fidelities.pdf")
+for h_b in df["h_b"].unique():
+    fig, ax = plt.subplots()
+    sns.lineplot(
+        df[df["h_b"] == h_b],
+        x="distance_km",
+        y="fidelity",
+        hue="elevation_degrees",
+        ax=ax,
+        style="elevation_degrees",
+        markers=True,
+        dashes=False,
+    )
+    ax.grid(visible=True)
+    ax.set_ylabel("Generation fidelity")
+    ax.set_xlabel("Distance (km)")
+    ax.set_ylim(bottom=0.25, top=1)
+    ax.set_title(f"{h_b}")
+    h_b_label = h_b.replace(" ", "_")
+    plt.savefig(f"fidelities-{h_b_label}.pdf")
