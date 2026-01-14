@@ -7,36 +7,36 @@ use rand_distr::num_traits::Inv;
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct LeoFidelities {
     /// Detector efficiency, $\eta_d$.
-    eta_d: f64,
+    pub eta_d: f64,
     /// SPDC pumping frequency, in Hz.
-    f: f64,
+    pub f: f64,
     /// Photon entanglement generation probability, $p_s$.
-    p_s: f64,
+    pub p_s: f64,
     /// Beam width at the transmitter, in m, $W_0$.
-    w_0: f64,
+    pub w_0: f64,
     /// Radius of the satellite receiver telescope, in m.
-    r_sat: f64,
+    pub r_sat: f64,
     /// Radius of the on-ground station receiver telescope, in m.
-    r_ogs: f64,
+    pub r_ogs: f64,
     /// Wavelength, in m, $\lambda$.
-    lambda: f64,
+    pub lambda: f64,
     /// Quality factor of the Gaussian beam, $M^2$.
-    m_square: f64,
+    pub m_square: f64,
     /// Atmospheric extinction parameter at 580 nm, $\beta$.
-    beta: f64,
+    pub beta: f64,
     /// Initial pair fidelity, $F_0$.
-    f_0: f64,
+    pub f_0: f64,
     /// Total brightness of the sky background, $H_b$,
-    /// in $W m^{-2} sr^{-1} nm^{-1}$.
-    h_b: f64,
+    /// in $W m^{-2} sr^{-1} m^{-1}$.
+    pub h_b: f64,
     /// Field of view of the receiver, $\Omega_{fov}$, in $sr$.
-    omega_fov: f64,
+    pub omega_fov: f64,
     /// Spectral filter bandwidth, $B_f$, in m.
-    b_f: f64,
+    pub b_f: f64,
     /// Time filter bandwidth, $\Delta t = 1/f$.
-    delta_t: f64,
+    pub delta_t: f64,
     /// Frequency of the background photons.
-    nu: f64,
+    pub nu: f64,
 }
 
 impl Default for LeoFidelities {
@@ -52,7 +52,7 @@ impl Default for LeoFidelities {
             m_square: 3.0,
             beta: 1.1,
             f_0: 0.98,
-            h_b: 1e6,
+            h_b: 1e3, // clear night brightness
             omega_fov: 20e-6_f64.powf(2.0),
             b_f: 0.5e-9,
             delta_t: 20.0e6.inv(),
@@ -62,7 +62,7 @@ impl Default for LeoFidelities {
 }
 
 impl LeoFidelities {
-    /// Compute he  probability that the detection was due to a signal photon.
+    /// Compute the probability that the detection was due to a signal photon.
     ///
     /// Parameters
     /// - `distance`: distance from transmitter to receiver, in m
@@ -211,56 +211,43 @@ impl super::FidelityComputer for LeoFidelities {
 mod tests {
     use super::*;
     use crate::physical_topology::FidelityComputer;
-    use crate::physical_topology::{NodeType, PhysicalTopology};
     use std::io::Write;
 
     #[test]
     fn test_leo_fidelities() {
         let fidelities = LeoFidelities::default();
-
-        let mut topo = PhysicalTopology::from_distances(vec![
-            (0, 1, 200000.0),
-            (0, 2, 200000.0),
-            (0, 3, 200000.0),
-            (0, 4, 200000.0),
-            (4, 5, 200000.0),
-        ]);
-
-        topo.graph.node_weight_mut(0.into()).unwrap().node_type = NodeType::SAT;
-        topo.graph.node_weight_mut(1.into()).unwrap().node_type = NodeType::OGS;
-        topo.graph.node_weight_mut(2.into()).unwrap().node_type = NodeType::OGS;
-        topo.graph.node_weight_mut(3.into()).unwrap().node_type = NodeType::SAT;
-        topo.graph.node_weight_mut(4.into()).unwrap().node_type = NodeType::SAT;
-        topo.graph.node_weight_mut(5.into()).unwrap().node_type = NodeType::SAT;
+        let topo = crate::physical_topology::tests::test_topo();
 
         assert_eq!(fidelities.f_0, fidelities.fidelity(&topo, 0, 0, 3).unwrap());
-        println!("{}", fidelities.fidelity(&topo, 0, 0, 1).unwrap());
-        println!("{}", fidelities.fidelity(&topo, 0, 1, 3).unwrap());
-        println!("{}", fidelities.fidelity(&topo, 0, 1, 2).unwrap());
 
-        // assert_float_eq::assert_f64_near!(0.25, fidelities.fidelity(&topo, 0, 0, 1).unwrap());
+        // Note: the values in the assertions have _not_ been derived from
+        // external knowledge: they only verify non-regression, not correctness.
+        assert_float_eq::assert_f64_near!(
+            0.7541389793653572,
+            fidelities.fidelity(&topo, 0, 0, 1).unwrap()
+        );
         assert_eq!(fidelities.f_0, fidelities.fidelity(&topo, 0, 3, 4).unwrap());
-        // assert_float_eq::assert_f64_near!(
-        //     0.25,
-        //     fidelities.fidelity(&topo, 0, 1, 3).unwrap()
-        // );
-        // assert_float_eq::assert_f64_near!(
-        //     0.25,
-        //     fidelities.fidelity(&topo, 0, 1, 2).unwrap()
-        // );
+        assert_float_eq::assert_f64_near!(
+            0.7541389793653572,
+            fidelities.fidelity(&topo, 0, 1, 3).unwrap()
+        );
+        assert_float_eq::assert_f64_near!(
+            0.5981590555007453,
+            fidelities.fidelity(&topo, 0, 1, 2).unwrap()
+        );
     }
 
     #[ignore]
     #[test]
     fn print_leo_fidelities() {
-        let conf = LeoFidelities::default();
+        let fidelities = LeoFidelities::default();
 
         let mut outfile = std::fs::OpenOptions::new()
             .write(true)
             .append(false)
             .create(true)
             .truncate(true)
-            .open("fidelities.csv")
+            .open("leo_fidelities.csv")
             .unwrap();
 
         let h_b_values =
@@ -271,10 +258,11 @@ mod tests {
             for distance in 1..10 {
                 let distance = distance * 100;
                 for (h_b_label, h_b_value) in &h_b_values {
-                    let mut conf = conf.clone();
-                    conf.h_b = *h_b_value;
-                    let mu = conf.mu(distance as f64 * 1000.0, elevation as f64);
-                    let fidelity = mu * conf.f_0 + (1.0 - mu) * 0.25;
+                    let mut fidelities = fidelities.clone();
+                    fidelities.h_b = *h_b_value;
+                    let mu = fidelities.mu(distance as f64 * 1000.0, elevation as f64);
+                    let fidelity = mu * fidelities.f_0 + (1.0 - mu) * 0.25;
+
                     let _ = writeln!(
                         outfile,
                         "{},{},{},{}",

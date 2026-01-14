@@ -169,12 +169,14 @@ impl crate::utils::CsvFriend for PhysicalTopology {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum FidelityComputer {
     StaticFidelities(crate::physical_topology::StaticFidelities),
+    LeoFidelities(crate::physical_topology::LeoFidelities),
 }
 
 impl FidelityComputer {
     pub fn make(&self) -> Box<dyn crate::physical_topology::FidelityComputer> {
         match self {
             Self::StaticFidelities(conf) => Box::new(conf.clone()),
+            Self::LeoFidelities(conf) => Box::new(conf.clone()),
         }
     }
 }
@@ -182,17 +184,19 @@ impl FidelityComputer {
 impl crate::utils::CsvFriend for FidelityComputer {
     fn header(&self) -> String {
         match &self {
-            Self::StaticFidelities(conf) => {
-                crate::utils::struct_to_csv_header(conf).unwrap().to_string()
-            }
+            Self::StaticFidelities(conf) => crate::utils::struct_to_csv_header(conf)
+                .unwrap()
+                .to_string(),
+            Self::LeoFidelities(conf) => crate::utils::struct_to_csv_header(conf)
+                .unwrap()
+                .to_string(),
         }
     }
 
     fn to_csv(&self) -> String {
         match &self {
-            Self::StaticFidelities(conf) => {
-                crate::utils::struct_to_csv(conf).unwrap().to_string()
-            }
+            Self::StaticFidelities(conf) => crate::utils::struct_to_csv(conf).unwrap().to_string(),
+            Self::LeoFidelities(conf) => crate::utils::struct_to_csv(conf).unwrap().to_string(),
         }
     }
 }
@@ -200,12 +204,14 @@ impl crate::utils::CsvFriend for FidelityComputer {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum RateComputer {
     FixedRate(crate::physical_topology::FixedRate),
+    LeoRates(crate::physical_topology::LeoRates),
 }
 
 impl RateComputer {
     pub fn make(&self) -> Box<dyn crate::physical_topology::RateComputer> {
         match self {
             Self::FixedRate(conf) => Box::new(conf.clone()),
+            Self::LeoRates(conf) => Box::new(conf.clone()),
         }
     }
 }
@@ -213,17 +219,19 @@ impl RateComputer {
 impl crate::utils::CsvFriend for RateComputer {
     fn header(&self) -> String {
         match &self {
-            Self::FixedRate(conf) => {
-                crate::utils::struct_to_csv_header(conf).unwrap().to_string()
-            }
+            Self::FixedRate(conf) => crate::utils::struct_to_csv_header(conf)
+                .unwrap()
+                .to_string(),
+            Self::LeoRates(conf) => crate::utils::struct_to_csv_header(conf)
+                .unwrap()
+                .to_string(),
         }
     }
 
     fn to_csv(&self) -> String {
         match &self {
-            Self::FixedRate(conf) => {
-                crate::utils::struct_to_csv(conf).unwrap().to_string()
-            }
+            Self::FixedRate(conf) => crate::utils::struct_to_csv(conf).unwrap().to_string(),
+            Self::LeoRates(conf) => crate::utils::struct_to_csv(conf).unwrap().to_string(),
         }
     }
 }

@@ -56,3 +56,24 @@ fn test_physical_topology_dot() {
     let physical_topology = test_graph();
     println!("{}", petgraph::dot::Dot::new(&physical_topology.graph));
 }
+
+pub fn test_topo() -> PhysicalTopology {
+    use crate::physical_topology::NodeType;
+
+    let mut topo = PhysicalTopology::from_distances(vec![
+        (0, 1, 200000.0),
+        (0, 2, 200000.0),
+        (0, 3, 200000.0),
+        (0, 4, 200000.0),
+        (4, 5, 200000.0),
+    ]);
+
+    topo.graph.node_weight_mut(0.into()).unwrap().node_type = NodeType::SAT;
+    topo.graph.node_weight_mut(1.into()).unwrap().node_type = NodeType::OGS;
+    topo.graph.node_weight_mut(2.into()).unwrap().node_type = NodeType::OGS;
+    topo.graph.node_weight_mut(3.into()).unwrap().node_type = NodeType::SAT;
+    topo.graph.node_weight_mut(4.into()).unwrap().node_type = NodeType::SAT;
+    topo.graph.node_weight_mut(5.into()).unwrap().node_type = NodeType::SAT;
+
+    topo
+}

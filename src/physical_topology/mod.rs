@@ -7,6 +7,7 @@ pub mod file_params;
 pub mod fixed_rate;
 pub mod grid_params;
 pub mod leo_fidelities;
+pub mod leo_rates;
 pub mod rate_computer;
 pub mod static_fidelities;
 #[cfg(test)]
@@ -17,6 +18,8 @@ pub use crate::physical_topology::fidelity_computer::FidelityComputer;
 pub use crate::physical_topology::file_params::FileParams;
 pub use crate::physical_topology::fixed_rate::FixedRate;
 pub use crate::physical_topology::grid_params::GridParams;
+pub use crate::physical_topology::leo_fidelities::LeoFidelities;
+pub use crate::physical_topology::leo_rates::LeoRates;
 pub use crate::physical_topology::rate_computer::RateComputer;
 pub use crate::physical_topology::static_fidelities::StaticFidelities;
 
