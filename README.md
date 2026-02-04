@@ -40,6 +40,26 @@ cargo build --release
 
 This will create the main executable as `target/release/qnet_ll_sim`.
 
+### Example execution
+
+Build a simple example configuration with:
+
+```bash
+target/release/qnet_ll_sim -t chain
+```
+
+This will create a JSON file `conf.json` that contains the specifications of
+a simple experiment with two on-ground stations and one satellite acting as
+repeater.
+
+Then execute the simulator:
+
+```bash
+target/release/qnet_ll_sim
+```
+
+This will produce the simulation results in CSV files in `data`.
+
 ### Development
 
 When modifying the code, it is recommend to compile in debug mode:
