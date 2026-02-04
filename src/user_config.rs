@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: © 2025 Claudio Cicconetti <c.cicconetti@iit.cnr.it>
 // SPDX-License-Identifier: MIT
 
-use crate::physical_topology::{FixedRate, StaticFidelities};
+use crate::physical_topology::{FixedRate, LeoFidelities, LeoRates, StaticFidelities};
 use rand::SeedableRng;
 use rand_distr::Distribution;
 
@@ -10,13 +10,13 @@ pub fn default_sat_weight() -> crate::physical_topology::NodeWeight {
         label: None,
         node_type: crate::physical_topology::NodeType::SAT,
         is_repeater: true,
-        memory_qubits: 20,
+        memory_qubits: 100,
         decay_rate: 1.0,
         swapping_success_prob: 0.95,
         swapping_duration: 0.001,
         correction_duration: 0.0,
-        detectors: 10,
-        transmitters: 10,
+        detectors: 20,
+        transmitters: 20,
     }
 }
 
@@ -395,16 +395,47 @@ pub struct UserConfig {
     pub applications: Applications,
 }
 
-impl Default for UserConfig {
-    fn default() -> Self {
+pub enum UserConfigRecipe {
+    Grid,
+    Chain,
+    Leo,
+}
+
+impl UserConfigRecipe {
+    pub fn from_str(recipe: &str) -> anyhow::Result<Self> {
+        Ok(match recipe {
+            "grid" => Self::Grid,
+            "chain" => Self::Chain,
+            "leo" => Self::Leo,
+            _ => anyhow::bail!("unknown configuration recipe: {}", recipe),
+        })
+    }
+}
+
+impl UserConfig {
+    pub fn default_with_recipe(user_config_recipe: UserConfigRecipe) -> Self {
         Self {
-            duration: 10.0,
-            warmup_period: 1.0,
+            duration: 1.0,
+            warmup_period: 0.0,
             series_ignore: std::collections::HashSet::new(),
             sections_not_serialized: std::collections::HashSet::new(),
-            physical_topology: PhysicalTopology::Grid(ConfGrid::default()),
-            fidelity_computer: FidelityComputer::StaticFidelities(StaticFidelities::default()),
-            rate_computer: RateComputer::FixedRate(FixedRate::default()),
+            physical_topology: match user_config_recipe {
+                UserConfigRecipe::Grid => PhysicalTopology::Grid(ConfGrid::default()),
+                UserConfigRecipe::Chain => PhysicalTopology::Chain(ConfChain::default()),
+                UserConfigRecipe::Leo => PhysicalTopology::File(ConfFile::default()),
+            },
+            fidelity_computer: match user_config_recipe {
+                UserConfigRecipe::Grid | UserConfigRecipe::Chain => {
+                    FidelityComputer::StaticFidelities(StaticFidelities::default())
+                }
+                UserConfigRecipe::Leo => FidelityComputer::LeoFidelities(LeoFidelities::default()),
+            },
+            rate_computer: match user_config_recipe {
+                UserConfigRecipe::Grid | UserConfigRecipe::Chain => {
+                    RateComputer::FixedRate(FixedRate::default())
+                }
+                UserConfigRecipe::Leo => RateComputer::LeoRates(LeoRates::default()),
+            },
             logical_topology: LogicalTopology::default(),
             applications: Applications::default(),
         }

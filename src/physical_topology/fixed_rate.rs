@@ -9,7 +9,7 @@ pub struct FixedRate {
 
 impl Default for FixedRate {
     fn default() -> Self {
-        Self { rate: 1000.0 }
+        Self { rate: 100.0 }
     }
 }
 

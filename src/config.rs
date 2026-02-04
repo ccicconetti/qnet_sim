@@ -4,7 +4,7 @@
 use crate::user_config::UserConfig;
 use crate::utils::CsvFriend;
 
-#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Config {
     /// The seed to initialize pseudo-random number generators.
     pub seed: u64,

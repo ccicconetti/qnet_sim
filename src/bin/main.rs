@@ -4,7 +4,7 @@
 use clap::Parser;
 use qnet_ll_sim::config::Config;
 use qnet_ll_sim::simulation::Simulation;
-use qnet_ll_sim::user_config::UserConfig;
+use qnet_ll_sim::user_config::{UserConfig, UserConfigRecipe};
 use qnet_ll_sim::utils::CsvFriend;
 
 #[derive(Debug, clap::Parser)]
@@ -13,9 +13,9 @@ struct Args {
     /// Simulation configuration.
     #[arg(long, short, default_value_t = String::from("conf.json"))]
     conf: String,
-    /// Create a template for the simulation configuration.
-    #[arg(long, short)]
-    template: bool,
+    /// Create a template for the simulation configuration. Possible values: chain, grid, leo.
+    #[arg(long, short, default_value_t = Default::default())]
+    template: String,
     /// Initial seed to initialize the pseudo-random number generators
     #[arg(long, default_value_t = 0)]
     seed_init: u64,
@@ -76,13 +76,15 @@ async fn main() -> anyhow::Result<()> {
 
     // If requested, save a template configuration file and quit.
     let conf_path = std::path::Path::new(&args.conf);
-    if args.template {
+    if !args.template.is_empty() {
         if conf_path.exists() {
             println!("File {:#?} exists and will not be overwritten", conf_path);
         } else {
             std::fs::write(
                 conf_path,
-                serde_json::to_string_pretty(&UserConfig::default())?,
+                serde_json::to_string_pretty(&UserConfig::default_with_recipe(
+                    UserConfigRecipe::from_str(&args.template)?,
+                ))?,
             )?;
         }
         return Ok(());
