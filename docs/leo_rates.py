@@ -25,5 +25,6 @@ sns.lineplot(
 ax.grid(visible=True)
 ax.set_ylabel("Rate (EPR/s)")
 ax.set_xlabel("Distance (km)")
-ax.set_ylim(bottom=0)
+ax.set_ylim(bottom=0.1)
+ax.set_yscale("log")
 plt.savefig(f"leo_rates.pdf")

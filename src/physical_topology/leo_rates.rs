@@ -285,7 +285,7 @@ mod tests {
 
         let _ = writeln!(outfile, "link_type,distance_km,rate");
         for link_type in link_types {
-            for distance in 1..10 {
+            for distance in 1..60 {
                 let distance = distance * 100;
                 let distance_m = distance as f64 * 1000.0;
 

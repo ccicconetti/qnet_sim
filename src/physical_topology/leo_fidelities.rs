@@ -255,7 +255,7 @@ mod tests {
         let _ = writeln!(outfile, "elevation_degrees,h_b,distance_km,fidelity");
         for elevation in 1..6 {
             let elevation = elevation * 10;
-            for distance in 1..10 {
+            for distance in 1..20 {
                 let distance = distance * 100;
                 for (h_b_label, h_b_value) in &h_b_values {
                     let mut fidelities = fidelities.clone();
