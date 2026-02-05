@@ -33,7 +33,7 @@ if [ "$SEED_INIT" == "" ] ; then
     SEED_INIT=0
 fi
 if [ "$SEED_END" == "" ] ; then
-    SEED_END=40
+    SEED_END=16
 fi
 
 memory_qubits_v="50 100 200"
@@ -49,7 +49,7 @@ fi
 
 rm conf.json 2> /dev/null
 
-for (( snapshot = 0 ; snapshot < 10 ; snapshot++ )); do
+for (( snapshot = 0 ; snapshot < 500 ; snapshot++ )); do
 for MEMORY_QUBITS in $memory_qubits_v ; do
     echo "# MEMORY_QUBITS $MEMORY_QUBITS snapshot $snapshot"
 
