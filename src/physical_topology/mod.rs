@@ -158,9 +158,9 @@ impl NodeWeight {
 #[derive(Debug, Clone, Copy, Default, PartialOrd, PartialEq)]
 pub struct EdgeWeight {
     /// Distance between two nodes, in m.
-    distance: f64,
+    pub distance: f64,
     /// Elevation angle, in degrees.
-    elevation: f64,
+    pub elevation: f64,
 }
 
 impl std::fmt::Display for EdgeWeight {

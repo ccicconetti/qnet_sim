@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: © 2025 Claudio Cicconetti <c.cicconetti@iit.cnr.it>
 // SPDX-License-Identifier: MIT
 
+use petgraph::visit::EdgeRef;
 use rand::SeedableRng;
 use std::io::Write;
 
 use crate::event::{Event, EventHandler, EventType};
+use crate::physical_topology;
 use crate::{output::Sample, utils::CsvFriend};
 
 pub struct Simulation {
@@ -139,6 +141,8 @@ impl Simulation {
         series.set_headers("server-queue-len", &["node_id", "port"]);
         series.set_headers("app-path-len", &["node_id", "port"]);
         series.set_headers("app-tries", &["node_id", "port"]);
+        series.set_headers("physical-distance", &["source", "target", "node_type"]);
+        series.set_headers("physical-elevation", &["source", "target", "node_type"]);
 
         Ok(Self {
             network,
@@ -301,6 +305,51 @@ impl Simulation {
         );
         if log::log_enabled!(log::Level::Debug) {
             self.network.epr_register.dump();
+        }
+
+        // save physical topology metrics
+        let physical_topology = &self.network.physical_topology;
+        for e in physical_topology.graph().edge_references() {
+            let is_ogs = physical_topology
+                .graph()
+                .node_weight(e.source())
+                .unwrap()
+                .node_type
+                == physical_topology::NodeType::OGS
+                || physical_topology
+                    .graph()
+                    .node_weight(e.target())
+                    .unwrap()
+                    .node_type
+                    == physical_topology::NodeType::OGS;
+            let is_ogs_to_str = |is_ogs: bool| {
+                if is_ogs {
+                    String::from("ogs")
+                } else {
+                    String::from("sat")
+                }
+            };
+
+            self.series.add(
+                "physical-distance",
+                vec![
+                    format!("{}", e.source().index()),
+                    format!("{}", e.target().index()),
+                    is_ogs_to_str(is_ogs),
+                ],
+                0.0,
+                e.weight().distance,
+            );
+            self.series.add(
+                "physical-elevation",
+                vec![
+                    format!("{}", e.source().index()),
+                    format!("{}", e.target().index()),
+                    is_ogs_to_str(is_ogs),
+                ],
+                0.0,
+                e.weight().elevation,
+            );
         }
 
         // return the simulation output
