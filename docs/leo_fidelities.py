@@ -27,6 +27,5 @@ for h_b in df["h_b"].unique():
     ax.set_ylabel("Generation fidelity")
     ax.set_xlabel("Distance (km)")
     ax.set_ylim(bottom=0.25, top=1)
-    ax.set_title(f"{h_b}")
-    h_b_label = h_b.replace(" ", "_")
-    plt.savefig(f"leo_fidelities-{h_b_label}.pdf")
+    ax.set_title(f"$H_b = {h_b}~W \\cdot m^{{-2}} \\cdot sr^{{-1}} \\cdot m^{{-1}}$")
+    plt.savefig(f"leo_fidelities-{h_b}.pdf")

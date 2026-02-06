@@ -250,14 +250,13 @@ mod tests {
             .open("leo_fidelities.csv")
             .unwrap();
 
-        let h_b_values =
-            std::collections::HashMap::from([("clear night", 1e3), ("clear day", 1e6)]);
+        let h_b_values = [1e2, 1e3, 1e4, 1e5, 1e6];
         let _ = writeln!(outfile, "elevation_degrees,h_b,distance_km,fidelity");
         for elevation in 1..6 {
             let elevation = elevation * 10;
             for distance in 1..20 {
                 let distance = distance * 100;
-                for (h_b_label, h_b_value) in &h_b_values {
+                for h_b_value in &h_b_values {
                     let mut fidelities = fidelities.clone();
                     fidelities.h_b = *h_b_value;
                     let mu = fidelities.mu(distance as f64 * 1000.0, elevation as f64);
@@ -266,7 +265,7 @@ mod tests {
                     let _ = writeln!(
                         outfile,
                         "{},{},{},{}",
-                        elevation, h_b_label, distance, fidelity
+                        elevation, h_b_value, distance, fidelity
                     );
                 }
             }
