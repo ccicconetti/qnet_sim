@@ -19,9 +19,9 @@ pd.set_option("display.max_colwidth", None)
 
 metrics = {
     "app-net-latency": "End-to-end network latency (s)",
-        "fidelity": "Fidelity",
-        "ping-latency": "Ping latency (s)",
-        "occupancy": "NIC occupancy",
+    "fidelity": "Fidelity",
+    "ping-latency": "Ping latency (s)",
+    "occupancy": "NIC occupancy",
 }
 
 ylog_metrics = {"app-net-latency", "app-tries", "ping-latency"}
@@ -79,6 +79,7 @@ for metric, ylabel in metrics.items():
         ax.set_ylabel("CDF")
         ax.set_xlabel(ylabel)
         ax.set_yscale("log")
+        ax.set_ylim(bottom=0.001, top=1)
         legend = ax.get_legend()
         if legend:
             legend.set_title(title=primary_label)

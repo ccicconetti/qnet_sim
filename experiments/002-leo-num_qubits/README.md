@@ -1,6 +1,17 @@
-# 002-leo
+# 002-leo-num_qubits
 
 ## Scenario
+
+Multiple time snapshots of a LEO constellation.
+
+In each snapshot, an infinite ping between any two OGSs is established.
+
+A realistic model is used to determine the rate of generation of EPRs and their
+fidelity.
+
+Primary factor:
+
+- number of qubits per node
 
 ## Repeatability
 
@@ -9,7 +20,6 @@ Requirements:
 - `qnet_ll_sim` executable (or symlink)
 
 ## Dataset
-
 
 To execute all the experiments in this batch:
 
