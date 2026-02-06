@@ -22,10 +22,11 @@ df["logical_topology_rel_size"] = (
     df["logical_topology_num_edges"] / df["logical_topology_possible_edges"]
 )
 
+df = df[df["snapshot"] <= 307]
+
 metrics = {
     "logical_topology_num_edges": "Logical topology size (edges)",
     "logical_topology_rel_size": "Logical topology relative size",
-    "logical_topology_found": "Logical topology found ratio",
     "epr_register_final_len": "EPR register final length",
     "execution_time": "Simulation time (s)",
     "num_events": "Total number of events",
@@ -72,14 +73,7 @@ for metric, ylabel in metrics.items():
     plt.savefig(f"{RELATIVE_OUT_DIR}/{basename}-scalar-{metric}.{IMAGE_TYPE}")
 
 fig, ax = plt.subplots()
-sns.lineplot(
-    df,
-    x=primary,
-    y="logical_topology_found",
-    hue=hue,
-    ax=ax,
-    errorbar=None
-)
+sns.lineplot(df, x=primary, y="logical_topology_found", hue=hue, ax=ax, errorbar=None)
 ax.grid(visible=True)
 ax.set_ylabel("Topology found ratio")
 ax.set_xlabel(primary_label)

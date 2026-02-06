@@ -18,6 +18,7 @@ pd.set_option("display.max_columns", None)
 pd.set_option("display.max_colwidth", None)
 
 df = pd.read_csv(f"{DATA_DIR}/physical-distance-stats.csv")
+df = df[df["snapshot"] <= 307]
 
 df["mean"] /= 1000.0
 
@@ -35,6 +36,4 @@ ax.set_ylabel(f"Probability mass function")
 ax.set_xlabel("Distance (km)")
 ax.get_legend().set_title(title="")
 fig.suptitle(f"")
-plt.savefig(
-    f"{RELATIVE_OUT_DIR}/{basename}-topology-physical-distance.{IMAGE_TYPE}"
-)
+plt.savefig(f"{RELATIVE_OUT_DIR}/{basename}-topology-physical-distance.{IMAGE_TYPE}")

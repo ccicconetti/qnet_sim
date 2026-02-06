@@ -19,8 +19,9 @@ pd.set_option("display.max_colwidth", None)
 
 metrics = {
     "app-net-latency": "End-to-end network latency (s)",
-    "fidelity": "Fidelity",
-    "ping-latency": "Ping latency (s)",
+        "fidelity": "Fidelity",
+        "ping-latency": "Ping latency (s)",
+        "occupancy": "NIC occupancy",
 }
 
 ylog_metrics = {"app-net-latency", "app-tries", "ping-latency"}
@@ -33,6 +34,7 @@ aggregates = {"mean": "Average", "p95": "95th percentile", "count": "Count"}
 
 for metric, ylabel in metrics.items():
     df = pd.read_csv(f"{DATA_DIR}/{metric}-stats.csv")
+    df = df[df["snapshot"] <= 307]
 
     hue = None
     if secondaries:
@@ -43,7 +45,7 @@ for metric, ylabel in metrics.items():
 
     if metric == "app-net-latency":
         df["rate"] = df["count"] / df["duration"]
-        grouped = df.groupby(by=["seed", primary]).sum()["rate"]
+        grouped = df.groupby(by=["seed", "snapshot", primary]).sum()["rate"]
         df_new = grouped.reset_index()
         df_new["tpt"] = df_new["rate"]
         fig, ax = plt.subplots()
@@ -64,6 +66,25 @@ for metric, ylabel in metrics.items():
         # plt.xticks(rotation=45)
         fig.suptitle(f"")
         plt.savefig(f"{RELATIVE_OUT_DIR}/{basename}-series-app-througput.{IMAGE_TYPE}")
+
+    if metric == "occupancy":
+        fig, ax = plt.subplots()
+        sns.ecdfplot(
+            df,
+            x="mean",
+            hue=primary,
+            ax=ax,
+        )
+        ax.grid(visible=True)
+        ax.set_ylabel("CDF")
+        ax.set_xlabel(ylabel)
+        ax.set_yscale("log")
+        legend = ax.get_legend()
+        if legend:
+            legend.set_title(title=primary_label)
+        fig.suptitle(f"")
+        plt.savefig(f"{RELATIVE_OUT_DIR}/{basename}-series-{metric}.{IMAGE_TYPE}")
+        continue
 
     for aggregate, aggregate_type in aggregates.items():
         fig, ax = plt.subplots()
