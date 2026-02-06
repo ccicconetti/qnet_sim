@@ -28,6 +28,9 @@ struct Args {
     /// Save to Dot files and quit.
     #[arg(long)]
     save_to_dot: bool,
+    /// Print the available metrics and quit.
+    #[arg(long)]
+    print_metrics: bool,
     /// Name of the path where to save the metrics collected.
     #[arg(long, default_value_t = String::from("data/"))]
     output_path: String,
@@ -150,7 +153,7 @@ async fn main() -> anyhow::Result<()> {
                         break;
                     }
                 }
-                match Simulation::new(config.unwrap(), args.save_to_dot) {
+                match Simulation::new(config.unwrap(), args.save_to_dot, args.print_metrics) {
                     Ok(mut sim) => tx.send(sim.run()).unwrap(),
                     Err(err) => log::error!("error when running simulation: {}", err),
                 };

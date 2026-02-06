@@ -310,7 +310,7 @@ mod tests {
 
         let mut sim = None;
         for seed in 0..100 {
-            let cand_sim = Simulation::new(make_config(10.0, 20, seed, 1), false)?;
+            let cand_sim = Simulation::new(make_config(10.0, 20, seed, 1), false, false)?;
             if cand_sim.logical_path(0, 1).len() == 2 {
                 sim = Some(cand_sim);
                 break;
@@ -356,7 +356,7 @@ mod tests {
 
         let mut sim = None;
         for seed in 0..100 {
-            let cand_sim = Simulation::new(make_config(20.0, 100, seed, 3), false)?;
+            let cand_sim = Simulation::new(make_config(20.0, 100, seed, 3), false, false)?;
             if cand_sim.logical_path(0, 1).len() == 3 {
                 sim = Some(cand_sim);
                 break;
@@ -409,11 +409,12 @@ mod tests {
         let mut sim = Simulation::new(
             make_grid_config(seed, Some(path.to_str().unwrap().to_string()), 3),
             false,
+            false,
         )?;
         let output_file = sim.run();
         println!("{:?}", output_file.scalar.values());
 
-        let mut sim = Simulation::new(make_grid_config(seed, None, 3), false)?;
+        let mut sim = Simulation::new(make_grid_config(seed, None, 3), false, false)?;
         let output_grid = sim.run();
         println!("{:?}", output_grid.scalar.values());
 
