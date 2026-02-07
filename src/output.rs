@@ -6,18 +6,21 @@ use std::io::Write;
 use crate::utils::CsvFriend;
 
 #[derive(Debug, Clone, Default)]
-pub struct MetricDescription {
+pub struct MetricMetadata {
     /// Unit of measurement.
     unit: String,
     /// Brief description.
     brief: String,
+    /// Always collect, regardless of the warm-up period.
+    always_collect: bool,
 }
 
-impl MetricDescription {
-    pub fn new(unit: &str, brief: &str) -> Self {
+impl MetricMetadata {
+    pub fn new(unit: &str, brief: &str, always_collect: bool) -> Self {
         Self {
             unit: unit.to_string(),
             brief: brief.to_string(),
+            always_collect,
         }
     }
 }
@@ -138,19 +141,27 @@ pub enum ScalarMetricType {
 }
 
 enum ScalarMetricData {
-    Avg(Avg),
-    TimeAvg(TimeAvg),
-    Count(Count),
-    OneTime(f64),
+    Avg(Avg, MetricMetadata),
+    TimeAvg(TimeAvg, MetricMetadata),
+    Count(Count, MetricMetadata),
+    OneTime(f64, MetricMetadata),
 }
 
 impl ScalarMetricData {
     fn get(&self) -> f64 {
         match &self {
-            ScalarMetricData::Avg(avg) => avg.avg(),
-            ScalarMetricData::TimeAvg(time_avg) => time_avg.avg(),
-            ScalarMetricData::Count(count) => count.tot(),
-            ScalarMetricData::OneTime(one_time) => *one_time,
+            ScalarMetricData::Avg(avg, _) => avg.avg(),
+            ScalarMetricData::TimeAvg(time_avg, _) => time_avg.avg(),
+            ScalarMetricData::Count(count, _) => count.tot(),
+            ScalarMetricData::OneTime(one_time, _) => *one_time,
+        }
+    }
+    fn metadata(&self) -> MetricMetadata {
+        match &self {
+            ScalarMetricData::Avg(_, metadata) => metadata.clone(),
+            ScalarMetricData::TimeAvg(_, metadata) => metadata.clone(),
+            ScalarMetricData::Count(_, metadata) => metadata.clone(),
+            ScalarMetricData::OneTime(_, metadata) => metadata.clone(),
         }
     }
 }
@@ -160,55 +171,49 @@ pub struct OutputScalar {
     enabled: bool,
     warmup: u64,
     samples: std::collections::BTreeMap<String, ScalarMetricData>,
-    metadata: std::collections::BTreeMap<String, MetricDescription>,
 }
 
 impl OutputScalar {
     pub fn one_time(&mut self, name: &str, value: f64) {
-        if !self.enabled {
-            return;
-        }
-        if let Some(ScalarMetricData::OneTime(data)) = &mut self.samples.get_mut(name) {
-            *data = value;
+        if let Some(ScalarMetricData::OneTime(data, metadata)) = &mut self.samples.get_mut(name) {
+            if self.enabled || metadata.always_collect {
+                *data = value;
+            }
         }
     }
 
-    pub fn init(
-        &mut self,
-        name: &str,
-        metric_type: ScalarMetricType,
-        description: MetricDescription,
-    ) {
+    pub fn init(&mut self, name: &str, metric_type: ScalarMetricType, description: MetricMetadata) {
         match metric_type {
-            ScalarMetricType::Avg => self
-                .samples
-                .insert(name.to_string(), ScalarMetricData::Avg(Avg::default())),
+            ScalarMetricType::Avg => self.samples.insert(
+                name.to_string(),
+                ScalarMetricData::Avg(Avg::default(), description),
+            ),
             ScalarMetricType::TimeAvg => self.samples.insert(
                 name.to_string(),
-                ScalarMetricData::TimeAvg(TimeAvg::default()),
+                ScalarMetricData::TimeAvg(TimeAvg::default(), description),
             ),
-            ScalarMetricType::Count => self
-                .samples
-                .insert(name.to_string(), ScalarMetricData::Count(Count::default())),
-            ScalarMetricType::OneTime => self
-                .samples
-                .insert(name.to_string(), ScalarMetricData::OneTime(f64::NAN)),
+            ScalarMetricType::Count => self.samples.insert(
+                name.to_string(),
+                ScalarMetricData::Count(Count::default(), description),
+            ),
+            ScalarMetricType::OneTime => self.samples.insert(
+                name.to_string(),
+                ScalarMetricData::OneTime(f64::NAN, description),
+            ),
         };
-        self.metadata.insert(name.to_string(), description);
     }
 
     pub fn avg(&mut self, name: &str, value: f64) {
-        if !self.enabled {
-            return;
-        }
-        if let Some(ScalarMetricData::Avg(data)) = self.samples.get_mut(name) {
-            data.add(value);
+        if let Some(ScalarMetricData::Avg(data, metadata)) = self.samples.get_mut(name) {
+            if self.enabled || metadata.always_collect {
+                data.add(value);
+            }
         }
     }
 
     pub fn time_avg(&mut self, name: &str, now: u64, value: f64) {
-        if let Some(ScalarMetricData::TimeAvg(data)) = self.samples.get_mut(name) {
-            if self.enabled {
+        if let Some(ScalarMetricData::TimeAvg(data, metadata)) = self.samples.get_mut(name) {
+            if self.enabled || metadata.always_collect {
                 data.add(now, value);
             } else {
                 data.update_value(value);
@@ -217,11 +222,10 @@ impl OutputScalar {
     }
 
     pub fn count(&mut self, name: &str) {
-        if !self.enabled {
-            return;
-        }
-        if let Some(ScalarMetricData::Count(data)) = self.samples.get_mut(name) {
-            data.add();
+        if let Some(ScalarMetricData::Count(data, metadata)) = self.samples.get_mut(name) {
+            if self.enabled || metadata.always_collect {
+                data.add();
+            }
         }
     }
 
@@ -229,7 +233,7 @@ impl OutputScalar {
         self.enabled = true;
         self.warmup = now;
         for elem in &mut self.samples.values_mut() {
-            if let ScalarMetricData::TimeAvg(data) = elem {
+            if let ScalarMetricData::TimeAvg(data, _) = elem {
                 data.enable(now);
             }
         }
@@ -237,7 +241,7 @@ impl OutputScalar {
 
     pub fn finish(&mut self, now: u64) {
         for elem in &mut self.samples.values_mut() {
-            if let ScalarMetricData::TimeAvg(data) = elem {
+            if let ScalarMetricData::TimeAvg(data, _) = elem {
                 data.finish(now);
             }
         }
@@ -253,12 +257,13 @@ impl OutputScalar {
 
     pub fn to_markdown_table(&self) -> Vec<MetricDescriptionRow> {
         let mut ret = vec![];
-        for (name, desc) in &self.metadata {
+        for (name, desc) in &self.samples {
+            let metadata = desc.metadata();
             ret.push(MetricDescriptionRow {
                 name: name.to_string(),
                 extra: String::default(),
-                unit: desc.unit.to_string(),
-                brief: desc.brief.to_string(),
+                unit: metadata.unit.to_string(),
+                brief: metadata.brief.to_string(),
             });
         }
         ret
@@ -291,6 +296,8 @@ pub struct OutputSeriesSingle {
     /// - the time when the sample was collected
     /// - the value of the sample
     pub values: Vec<(Vec<String>, f64, f64)>,
+    /// The metadata of this metric.
+    pub metadata: MetricMetadata,
 }
 
 impl OutputSeriesSingle {
@@ -319,7 +326,6 @@ pub struct OutputSeries {
     enabled: bool,
     ignore: std::collections::HashSet<String>,
     pub series: std::collections::HashMap<String, OutputSeriesSingle>,
-    metadata: std::collections::BTreeMap<String, MetricDescription>,
 }
 
 impl OutputSeries {
@@ -328,7 +334,6 @@ impl OutputSeries {
             enabled: false,
             ignore,
             series: std::collections::HashMap::new(),
-            metadata: std::collections::BTreeMap::new(),
         }
     }
 
@@ -344,7 +349,7 @@ impl OutputSeries {
     /// labels is different from the number of elements expected based on the
     /// headers.
     pub fn add(&mut self, name: &str, labels: Vec<String>, time: f64, value: f64) {
-        if self.enabled && !self.ignore.contains(name) {
+        if !self.ignore.contains(name) {
             let series_single = self
                 .series
                 .get_mut(name)
@@ -356,7 +361,9 @@ impl OutputSeries {
                 series_single.headers.len(),
                 labels.len()
             );
-            series_single.values.push((labels, time, value));
+            if self.enabled || series_single.metadata.always_collect {
+                series_single.values.push((labels, time, value));
+            }
         }
     }
 
@@ -370,24 +377,24 @@ impl OutputSeries {
     /// - `name`: the name of the metric.
     /// - `headers`: the header to be used for serializing values.
     /// - `description`: metric metadata.
-    pub fn init(&mut self, name: &str, headers: &[&str], description: MetricDescription) {
+    pub fn init(&mut self, name: &str, headers: &[&str], description: MetricMetadata) {
         if !self.ignore.contains(name) {
             let series_single = self.series.entry(name.to_string()).or_default();
             series_single.headers = headers.iter().map(|x| x.to_string()).collect();
+            series_single.metadata = description;
             series_single.values.clear();
-            self.metadata.insert(name.to_string(), description);
         }
     }
 
     pub fn to_markdown_table(&self) -> Vec<MetricDescriptionRow> {
         let mut ret = vec![];
-        for (name, desc) in &self.metadata {
+        for (name, desc) in &self.series {
             if let Some(val) = self.series.get(name) {
                 ret.push(MetricDescriptionRow {
                     name: name.to_string(),
                     extra: val.headers.join(","),
-                    unit: desc.unit.to_string(),
-                    brief: desc.brief.to_string(),
+                    unit: desc.metadata.unit.to_string(),
+                    brief: desc.metadata.brief.to_string(),
                 });
             }
         }
@@ -605,7 +612,7 @@ mod tests {
             scalar.init(
                 "metric",
                 ScalarMetricType::TimeAvg,
-                MetricDescription::default(),
+                MetricMetadata::default(),
             );
             scalar.enable(*warmup);
             scalar.time_avg("metric", 20, 1.0);
@@ -614,7 +621,7 @@ mod tests {
             scalar.time_avg("metric", 50, 3.0);
             scalar.finish(100);
 
-            if let ScalarMetricData::TimeAvg(metric) = scalar.samples.get("metric").unwrap() {
+            if let ScalarMetricData::TimeAvg(metric, _) = scalar.samples.get("metric").unwrap() {
                 assert!(
                     metric.avg() == *expected_value,
                     "{} != {} (sum {}, time {}, warmup {})",
@@ -636,9 +643,9 @@ mod tests {
             "to-be-ignored".to_string(),
         ]));
 
-        output_series.init("my-metric-0", &[], MetricDescription::default());
-        output_series.init("my-metric-1", &["x"], MetricDescription::default());
-        output_series.init("my-metric-2", &["x", "y"], MetricDescription::default());
+        output_series.init("my-metric-0", &[], MetricMetadata::default());
+        output_series.init("my-metric-1", &["x"], MetricMetadata::default());
+        output_series.init("my-metric-2", &["x", "y"], MetricMetadata::default());
 
         assert!(!output_series.enabled);
 
@@ -686,9 +693,9 @@ mod tests {
     fn test_output_stats() -> anyhow::Result<()> {
         let mut output_series = OutputSeries::new(std::collections::HashSet::new());
 
-        output_series.init("my-metric-0", &[], MetricDescription::default());
-        output_series.init("my-metric-1", &["x"], MetricDescription::default());
-        output_series.init("my-metric-2", &["x", "y"], MetricDescription::default());
+        output_series.init("my-metric-0", &[], MetricMetadata::default());
+        output_series.init("my-metric-1", &["x"], MetricMetadata::default());
+        output_series.init("my-metric-2", &["x", "y"], MetricMetadata::default());
 
         output_series.add("my-metric-0", vec![], 1.0, 1.1);
         output_series.add("my-metric-1", vec!["a".to_string()], 2.0, 2.1);

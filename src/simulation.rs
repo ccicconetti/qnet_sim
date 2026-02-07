@@ -127,73 +127,83 @@ impl Simulation {
 
         // Create data structure for scalar values.
         let mut single = crate::output::OutputScalar::default();
-        single.init("bsm_prob", crate::output::ScalarMetricType::Avg, crate::output::MetricDescription::new("probability", "Probability of a successful Bell State Measurement performed during an Entanglement Swapping operation"));
+        single.init("bsm_prob", crate::output::ScalarMetricType::Avg, crate::output::MetricMetadata::new("probability", "Probability of a successful Bell State Measurement performed during an Entanglement Swapping operation", false));
         single.init(
             "bsm_tot",
             crate::output::ScalarMetricType::Count,
-            crate::output::MetricDescription::new(
+            crate::output::MetricMetadata::new(
                 "operations",
                 "Total number of Entanglement Swapping operations performed",
+                false,
             ),
         );
         single.init(
             "event_queue_len",
             crate::output::ScalarMetricType::TimeAvg,
-            crate::output::MetricDescription::new(
+            crate::output::MetricMetadata::new(
                 "events",
                 "Average number of events in the queue",
+                false,
             ),
         );
         single.init(
             "local_epr_misses",
             crate::output::ScalarMetricType::Count,
-            crate::output::MetricDescription::new("misses", "Total number of EPR misses, i.e., events when the master requests to use a given memory cell, which is, however, not available on the slave node, resulting in an ES failure"),
+            crate::output::MetricMetadata::new("misses", "Total number of EPR misses, i.e., events when the master requests to use a given memory cell, which is, however, not available on the slave node, resulting in an ES failure",false)
         );
         single.init(
             "epr_frees",
             crate::output::ScalarMetricType::Count,
-            crate::output::MetricDescription::new("frees", "Total number of EPR free operations"),
+            crate::output::MetricMetadata::new(
+                "frees",
+                "Total number of EPR free operations",
+                false,
+            ),
         );
         single.init(
             "logical_topology_found",
             crate::output::ScalarMetricType::OneTime,
-            crate::output::MetricDescription::new("{0,1}", "Value that is equal to 1 if a logical topology has been found for the given physical topology, 0 otherwise"),
+            crate::output::MetricMetadata::new("{0,1}", "Value that is equal to 1 if a logical topology has been found for the given physical topology, 0 otherwise",true)
         );
         single.init(
             "logical_topology_num_edges",
             crate::output::ScalarMetricType::OneTime,
-            crate::output::MetricDescription::new(
+            crate::output::MetricMetadata::new(
                 "edges",
                 "Total number of edges in the logical topology",
+                true,
             ),
         );
         single.init(
             "logical_topology_possible_edges",
             crate::output::ScalarMetricType::OneTime,
-            crate::output::MetricDescription::new(
+            crate::output::MetricMetadata::new(
                 "edges",
                 "Total number of possible edges in the logical topology",
+                true,
             ),
         );
         single.init(
             "num_events",
             crate::output::ScalarMetricType::OneTime,
-            crate::output::MetricDescription::new(
+            crate::output::MetricMetadata::new(
                 "events",
                 "Total number of events in the simulation",
+                true,
             ),
         );
         single.init(
             "execution_time",
             crate::output::ScalarMetricType::OneTime,
-            crate::output::MetricDescription::new("s", "Simulation real-time duration"),
+            crate::output::MetricMetadata::new("s", "Simulation real-time duration", true),
         );
         single.init(
             "epr_register_final_len",
             crate::output::ScalarMetricType::OneTime,
-            crate::output::MetricDescription::new(
+            crate::output::MetricMetadata::new(
                 "EPR pairs",
                 "Total number of residual EPR pairs in the register",
+                true,
             ),
         );
 
@@ -202,81 +212,132 @@ impl Simulation {
         series.init(
             "gen-fidelity",
             &["node_id"],
-            crate::output::MetricDescription::new("[0,1]", "Generation fidelity"),
+            crate::output::MetricMetadata::new("[0,1]", "Generation fidelity", false),
         );
         series.init(
             "fidelity",
             &["node_id", "port"],
-            crate::output::MetricDescription::new("[0,1]", "Measured fidelity"),
+            crate::output::MetricMetadata::new("[0,1]", "Measured fidelity", false),
         );
         series.init(
             "occupancy",
             &["node_id", "peer_node_id"],
-            crate::output::MetricDescription::new("memory cells", "Occupancy at a given NIC"),
+            crate::output::MetricMetadata::new("memory cells", "Occupancy at a given NIC", false),
         );
         series.init(
             "app-net-latency",
             &["node_id", "port"],
-            crate::output::MetricDescription::new("s", "Application network latency, i.e., the time between when an EPR is requested from an application and when it is fully established, i.e., it can proceed"),
+            crate::output::MetricMetadata::new("s", "Application network latency, i.e., the time between when an EPR is requested from an application and when it is fully established, i.e., it can proceed", false),
         );
         series.init(
             "client-latency",
             &["node_id", "port"],
-            crate::output::MetricDescription::new(
+            crate::output::MetricMetadata::new(
                 "s",
                 "In a client-server application, the waiting time of an EPR request",
+                false,
             ),
         );
         series.init(
             "client-queue-len",
             &["node_id", "port"],
-            crate::output::MetricDescription::new(
+            crate::output::MetricMetadata::new(
                 "requests",
                 "In a client-server application, the number of queued requests at a client",
+                false,
             ),
         );
         series.init(
             "ping-latency",
             &["node_id", "peer_node_id"],
-            crate::output::MetricDescription::new(
+            crate::output::MetricMetadata::new(
                 "s",
                 "In a ping application, the latency to establish an end-to-end entanglement",
+                false,
             ),
         );
         series.init(
             "server-queue-len",
             &["node_id", "port"],
-            crate::output::MetricDescription::new(
+            crate::output::MetricMetadata::new(
                 "responses",
                 "In a client-server application, the number of queue responses at a server",
+                false,
             ),
         );
         series.init(
             "app-path-len",
             &["node_id", "port"],
-            crate::output::MetricDescription::new("hops", "The path length for an application"),
+            crate::output::MetricMetadata::new("hops", "The path length for an application", true),
         );
         series.init(
             "app-tries",
             &["node_id", "port"],
-            crate::output::MetricDescription::new("tries", "The number of times an EPR has to be requested before an end-to-end entanglement is established"),
+            crate::output::MetricMetadata::new("tries", "The number of times an EPR has to be requested before an end-to-end entanglement is established",false)
         );
         series.init(
             "physical-distance",
             &["source", "target", "node_type"],
-            crate::output::MetricDescription::new(
+            crate::output::MetricMetadata::new(
                 "m",
                 "The physical distance between two nodes in the physical topology",
+                true,
             ),
         );
         series.init(
             "physical-elevation",
             &["source", "target", "node_type"],
-            crate::output::MetricDescription::new(
+            crate::output::MetricMetadata::new(
                 "degrees",
                 "The elevation between two nodes in the physical topology",
+                true,
             ),
         );
+
+        // Save physical topology metrics.
+        let physical_topology = &network.physical_topology;
+        for e in physical_topology.graph().edge_references() {
+            let is_ogs = physical_topology
+                .graph()
+                .node_weight(e.source())
+                .unwrap()
+                .node_type
+                == physical_topology::NodeType::OGS
+                || physical_topology
+                    .graph()
+                    .node_weight(e.target())
+                    .unwrap()
+                    .node_type
+                    == physical_topology::NodeType::OGS;
+            let is_ogs_to_str = |is_ogs: bool| {
+                if is_ogs {
+                    String::from("ogs")
+                } else {
+                    String::from("sat")
+                }
+            };
+
+            series.add(
+                "physical-distance",
+                vec![
+                    format!("{}", e.source().index()),
+                    format!("{}", e.target().index()),
+                    is_ogs_to_str(is_ogs),
+                ],
+                0.0,
+                e.weight().distance,
+            );
+            series.add(
+                "physical-elevation",
+                vec![
+                    format!("{}", e.source().index()),
+                    format!("{}", e.target().index()),
+                    is_ogs_to_str(is_ogs),
+                ],
+                0.0,
+                e.weight().elevation,
+            );
+        }
 
         // Terminate immediately if the user requested to print metrics.
         if print_metrics {
@@ -449,51 +510,6 @@ impl Simulation {
         );
         if log::log_enabled!(log::Level::Debug) {
             self.network.epr_register.dump();
-        }
-
-        // save physical topology metrics
-        let physical_topology = &self.network.physical_topology;
-        for e in physical_topology.graph().edge_references() {
-            let is_ogs = physical_topology
-                .graph()
-                .node_weight(e.source())
-                .unwrap()
-                .node_type
-                == physical_topology::NodeType::OGS
-                || physical_topology
-                    .graph()
-                    .node_weight(e.target())
-                    .unwrap()
-                    .node_type
-                    == physical_topology::NodeType::OGS;
-            let is_ogs_to_str = |is_ogs: bool| {
-                if is_ogs {
-                    String::from("ogs")
-                } else {
-                    String::from("sat")
-                }
-            };
-
-            self.series.add(
-                "physical-distance",
-                vec![
-                    format!("{}", e.source().index()),
-                    format!("{}", e.target().index()),
-                    is_ogs_to_str(is_ogs),
-                ],
-                0.0,
-                e.weight().distance,
-            );
-            self.series.add(
-                "physical-elevation",
-                vec![
-                    format!("{}", e.source().index()),
-                    format!("{}", e.target().index()),
-                    is_ogs_to_str(is_ogs),
-                ],
-                0.0,
-                e.weight().elevation,
-            );
         }
 
         // return the simulation output
