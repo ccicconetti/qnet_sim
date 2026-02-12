@@ -36,7 +36,7 @@ if [ "$SEED_END" == "" ] ; then
     SEED_END=16
 fi
 
-memory_qubits_v="50 100 200"
+memory_qubits_v="25 50 250 500"
 
 #
 # Execute experiments
