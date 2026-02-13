@@ -1,0 +1,69 @@
+{
+  "duration": 100.0,
+  "warmup_period": 0.0,
+  "series_ignore": [],
+  "sections_not_serialized": [],
+  "physical_topology": {
+    "Chain": {
+      "chain_params": {
+        "orbit_to_orbit_distance": 3000000.0,
+        "ground_to_orbit_distance": 1000000.0,
+        "num_repeaters": $NUM_REPEATERS,
+        "elevation_min": 10.0,
+        "elevation_max": 60.0,
+        "perfect": true
+      },
+      "sat_weight": {
+        "label": null,
+        "node_type": "SAT",
+        "is_repeater": true,
+        "memory_qubits": 100,
+        "decay_rate": 1.0,
+        "swapping_success_prob": 0.95,
+        "swapping_duration": 0.001,
+        "correction_duration": 0.0,
+        "detectors": 20,
+        "transmitters": 20
+      },
+      "ogs_weight": {
+        "label": null,
+        "node_type": "OGS",
+        "is_repeater": false,
+        "memory_qubits": 100,
+        "decay_rate": 1.0,
+        "swapping_success_prob": 0.0,
+        "swapping_duration": 0.0,
+        "correction_duration": 0.001,
+        "detectors": 10,
+        "transmitters": 0
+      }
+    }
+  },
+  "fidelity_computer": {
+    "StaticFidelities": {
+      "f_o": 0.95,
+      "f_g": 0.95,
+      "f_oo": 0.95,
+      "f_og": 0.95,
+      "f_gg": 0.95
+    }
+  },
+  "rate_computer": {
+    "FixedRate": {
+      "rate": 100.0
+    }
+  },
+  "logical_topology": {
+    "physical_to_logical_policy": "RandomGreedy"
+  },
+  "applications": {
+    "ConfPing": {
+      "source_dest_pairs": {
+        "List": [
+            $PAIRS
+        ]
+      },
+      "max_requests": 0
+    }
+  }
+}
