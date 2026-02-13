@@ -18,6 +18,7 @@ pub struct Simulation {
 
     // configuration
     config: crate::config::Config,
+    user_config: crate::user_config::UserConfig,
 }
 
 fn save_to_dot_file<
@@ -51,20 +52,17 @@ where
 impl Simulation {
     fn create_network(
         config: &crate::config::Config,
+        user_config: &crate::user_config::UserConfig,
         physical_topology: crate::physical_topology::PhysicalTopology,
         save_to_dot: bool,
     ) -> crate::network::Network {
         let mut rng = rand::rngs::StdRng::seed_from_u64(config.seed);
 
-        let rate_computer =
-            crate::user_config::RateComputer::make(&config.user_config.rate_computer);
+        let rate_computer = crate::user_config::RateComputer::make(&user_config.rate_computer);
 
         let logical_topology =
             match crate::logical_topology::LogicalTopology::from_physical_topology(
-                &config
-                    .user_config
-                    .logical_topology
-                    .physical_to_logical_policy,
+                &user_config.logical_topology.physical_to_logical_policy,
                 &physical_topology,
                 rate_computer.as_ref(),
                 &mut rng,
@@ -100,7 +98,7 @@ impl Simulation {
             };
         crate::network::Network::new(
             physical_topology,
-            crate::user_config::FidelityComputer::make(&config.user_config.fidelity_computer),
+            crate::user_config::FidelityComputer::make(&user_config.fidelity_computer),
             rate_computer,
             std::rc::Rc::new(logical_topology),
             config.seed,
@@ -109,18 +107,19 @@ impl Simulation {
 
     pub fn new(
         config: crate::config::Config,
+        user_config: crate::user_config::UserConfig,
         save_to_dot: bool,
         print_metrics: bool,
     ) -> anyhow::Result<Self> {
-        anyhow::ensure!(config.user_config.duration > 0.0, "vanishing duration");
+        anyhow::ensure!(user_config.duration > 0.0, "vanishing duration");
 
-        let physical_topology = config.user_config.physical_topology.make(config.seed)?;
+        let physical_topology = user_config.physical_topology.make(config.seed)?;
 
         if save_to_dot {
             save_to_dot_file(physical_topology.graph(), "physical_topology.dot")?;
         }
 
-        let network = Self::create_network(&config, physical_topology, save_to_dot);
+        let network = Self::create_network(&config, &user_config, physical_topology, save_to_dot);
 
         // Terminate immediately if the user requested to save to Dot.
         anyhow::ensure!(!save_to_dot, "saved to Dot files");
@@ -208,7 +207,7 @@ impl Simulation {
         );
 
         // Create data structure for time series, also setting the headers
-        let mut series = crate::output::OutputSeries::new(config.user_config.series_ignore.clone());
+        let mut series = crate::output::OutputSeries::new(user_config.series_ignore.clone());
         series.init(
             "gen-fidelity",
             &["node_id"],
@@ -352,6 +351,7 @@ impl Simulation {
         Ok(Self {
             network,
             config,
+            user_config,
             events: crate::event_queue::EventQueue::default(),
             single,
             series,
@@ -385,14 +385,14 @@ impl Simulation {
 
     /// Run a simulation.
     pub fn run(&mut self) -> crate::output::Output {
-        let conf = &self.config.user_config;
+        let conf = &self.user_config;
         let conf_100th = conf.duration / 100.0;
 
         // create the applications (if a logical topology has been found)
         if self.network.logical_topology.graph().node_count() > 0 {
             create_applications(
                 self.config.seed,
-                &self.config.user_config.applications,
+                &self.user_config.applications,
                 &mut self.network,
             );
         }
@@ -519,6 +519,7 @@ impl Simulation {
             scalar: single,
             series,
             config_csv: self.config.to_csv(),
+            user_config_csv: self.user_config.to_csv(),
         }
     }
 }

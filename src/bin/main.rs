@@ -115,28 +115,23 @@ async fn main() -> anyhow::Result<()> {
 
     // Create the configurations of all the experiments
     let configurations = std::sync::Arc::new(std::sync::Mutex::new(vec![]));
-    let mut config_csv_header = None;
     for seed in args.seed_init..args.seed_end {
-        let config = Config {
-            seed,
-            user_config: user_config.clone(),
-        };
-        if let Some(first_config_csv_header) = &config_csv_header {
-            anyhow::ensure!(
-                *first_config_csv_header == config.header(),
-                "all the configurations must have a consistent CSV header"
-            );
+        let config = Config { seed };
+
+        configurations
+            .lock()
+            .unwrap()
+            .push((config, user_config.clone()));
+    }
+
+    let (config_csv_header, user_config_csv_header) = {
+        let lock = configurations.lock().unwrap();
+        if let Some((config, user_config)) = lock.first() {
+            (config.header(), user_config.header())
         } else {
-            config_csv_header = Some(config.header());
+            return Ok(());
         }
-
-        configurations.lock().unwrap().push(config);
-    }
-
-    if configurations.lock().unwrap().is_empty() {
-        return Ok(());
-    }
-    let config_csv_header = config_csv_header.expect("no configurations found");
+    };
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     for i in 0..std::cmp::min(args.concurrency, (args.seed_end - args.seed_init) as usize) {
@@ -145,15 +140,15 @@ async fn main() -> anyhow::Result<()> {
         tokio::spawn(async move {
             log::info!("spawned worker #{}", i);
             loop {
-                let config;
-                {
-                    if let Some(val) = configurations.lock().unwrap().pop() {
-                        config = Some(val);
+                let (config, user_config) = {
+                    let mut lock = configurations.lock().unwrap();
+                    if let Some((config, user_config)) = lock.pop() {
+                        (config, user_config)
                     } else {
                         break;
                     }
-                }
-                match Simulation::new(config.unwrap(), args.save_to_dot, args.print_metrics) {
+                };
+                match Simulation::new(config, user_config, args.save_to_dot, args.print_metrics) {
                     Ok(mut sim) => tx.send(sim.run()).unwrap(),
                     Err(err) => log::error!("error when running simulation: {}", err),
                 };
@@ -177,6 +172,7 @@ async fn main() -> anyhow::Result<()> {
                 output_path: args.output_path,
                 append: args.append,
                 config_csv_header,
+                user_config_csv_header,
                 additional_header: args.additional_header,
                 additional_fields: args.additional_fields,
                 save_config: args.save_config,

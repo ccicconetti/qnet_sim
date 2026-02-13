@@ -96,7 +96,12 @@ mod tests {
         }
     }
 
-    fn make_config(duration: f64, memory_qubits: u32, seed: u64, num_repeaters: u32) -> Config {
+    fn make_config(
+        duration: f64,
+        memory_qubits: u32,
+        seed: u64,
+        num_repeaters: u32,
+    ) -> (Config, UserConfig) {
         let user_config = UserConfig {
             duration,
             warmup_period: 0.0,
@@ -154,10 +159,14 @@ mod tests {
                 max_requests: 100,
             }),
         };
-        Config { seed, user_config }
+        (Config { seed }, user_config)
     }
 
-    fn make_grid_config(seed: u64, file_topo: Option<String>, grid_size: usize) -> Config {
+    fn make_grid_config(
+        seed: u64,
+        file_topo: Option<String>,
+        grid_size: usize,
+    ) -> (Config, UserConfig) {
         let sat_weight = crate::physical_topology::NodeWeight {
             label: None,
             node_type: crate::physical_topology::NodeType::SAT,
@@ -295,7 +304,7 @@ mod tests {
                 max_requests: 1,
             }),
         };
-        Config { seed, user_config }
+        (Config { seed }, user_config)
     }
 
     #[ignore]
@@ -311,7 +320,8 @@ mod tests {
 
         let mut sim = None;
         for seed in 0..100 {
-            let cand_sim = Simulation::new(make_config(10.0, 20, seed, 1), false, false)?;
+            let (config, user_config) = make_config(10.0, 20, seed, 1);
+            let cand_sim = Simulation::new(config, user_config, false, false)?;
             if cand_sim.logical_path(0, 1).len() == 2 {
                 sim = Some(cand_sim);
                 break;
@@ -357,7 +367,8 @@ mod tests {
 
         let mut sim = None;
         for seed in 0..100 {
-            let cand_sim = Simulation::new(make_config(20.0, 100, seed, 3), false, false)?;
+            let (config, user_config) = make_config(20.0, 100, seed, 3);
+            let cand_sim = Simulation::new(config, user_config, false, false)?;
             if cand_sim.logical_path(0, 1).len() == 3 {
                 sim = Some(cand_sim);
                 break;
@@ -407,15 +418,13 @@ mod tests {
         let mut path = remove_me_dir.dir();
         path.push("topo.txt");
 
-        let mut sim = Simulation::new(
-            make_grid_config(seed, Some(path.to_str().unwrap().to_string()), 3),
-            false,
-            false,
-        )?;
+        let (config, user_config) =
+            make_grid_config(seed, Some(path.to_str().unwrap().to_string()), 3);
+        let mut sim = Simulation::new(config, user_config, false, false)?;
         let output_file = sim.run();
         println!("{:?}", output_file.scalar.values());
-
-        let mut sim = Simulation::new(make_grid_config(seed, None, 3), false, false)?;
+        let (config, user_config) = make_grid_config(seed, None, 3);
+        let mut sim = Simulation::new(config, user_config, false, false)?;
         let output_grid = sim.run();
         println!("{:?}", output_grid.scalar.values());
 

@@ -440,12 +440,14 @@ pub struct Output {
     pub scalar: OutputScalar,
     pub series: OutputSeries,
     pub config_csv: String,
+    pub user_config_csv: String,
 }
 
 pub struct OutputSaveConf {
     pub output_path: String,
     pub append: bool,
     pub config_csv_header: String,
+    pub user_config_csv_header: String,
     pub additional_header: String,
     pub additional_fields: String,
     pub save_config: bool,
@@ -454,27 +456,26 @@ pub struct OutputSaveConf {
 
 /// Save all the outputs to files.
 pub fn save_outputs(outputs: Vec<Output>, conf: OutputSaveConf) -> anyhow::Result<()> {
-    let header_comma = if conf.additional_header.is_empty() {
-        ""
+    let additional_header = if conf.additional_header.is_empty() {
+        String::default()
     } else {
-        ","
+        format!("{},", conf.additional_header)
     };
-
+    let user_config_csv_header = if conf.save_config {
+        format!("{},", conf.user_config_csv_header)
+    } else {
+        String::default()
+    };
     // Open all the files.
     let mut scalar_file = crate::utils::open_output_file(
         &conf.output_path,
         "scalar.csv",
         conf.append,
         format!(
-            "{}{}{}{}{}",
-            conf.additional_header,
-            header_comma,
-            if conf.save_config {
-                &conf.config_csv_header
-            } else {
-                ""
-            },
-            if conf.save_config { "," } else { "" },
+            "{}{},{}{}",
+            additional_header,
+            &conf.config_csv_header,
+            user_config_csv_header,
             outputs.first().unwrap().scalar.header()
         )
         .as_str(),
@@ -487,15 +488,10 @@ pub fn save_outputs(outputs: Vec<Output>, conf: OutputSaveConf) -> anyhow::Resul
                 continue;
             }
             let header_common = format!(
-                "{}{}{}{}{}",
-                conf.additional_header,
-                header_comma,
-                if conf.save_config {
-                    &conf.config_csv_header
-                } else {
-                    ""
-                },
-                if conf.save_config { "," } else { "" },
+                "{}{},{}{}",
+                additional_header,
+                &conf.config_csv_header,
+                user_config_csv_header,
                 elem.headers.join(",")
             );
             if conf.save_time_series {
@@ -527,19 +523,17 @@ pub fn save_outputs(outputs: Vec<Output>, conf: OutputSaveConf) -> anyhow::Resul
 
     // Dump the data to files.
     for output in outputs {
-        let config_csv = if conf.save_config {
-            &output.config_csv
+        let user_config_csv = if conf.save_config {
+            format!("{},", output.user_config_csv)
         } else {
-            ""
+            String::default()
         };
-        let config_comma = if conf.save_config { "," } else { "" };
         writeln!(
             &mut scalar_file,
-            "{}{}{}{}{}",
+            "{}{},{}{}",
             conf.additional_fields,
-            header_comma,
-            config_csv,
-            config_comma,
+            output.config_csv,
+            user_config_csv,
             output.scalar.to_csv()
         )?;
 
@@ -549,11 +543,10 @@ pub fn save_outputs(outputs: Vec<Output>, conf: OutputSaveConf) -> anyhow::Resul
                     for (labels, time, value) in &elem.values {
                         writeln!(
                             series_file,
-                            "{}{}{}{}{},{},{}",
+                            "{}{},{}{},{},{}",
                             conf.additional_fields,
-                            header_comma,
-                            config_csv,
-                            config_comma,
+                            output.config_csv,
+                            user_config_csv,
                             labels.join(","),
                             time,
                             value
@@ -574,11 +567,10 @@ pub fn save_outputs(outputs: Vec<Output>, conf: OutputSaveConf) -> anyhow::Resul
                         .unwrap_or_default();
                     writeln!(
                         series_stats_file,
-                        "{}{}{}{}{},{},{},{},{},{},{}",
+                        "{}{},{}{},{},{},{},{},{},{}",
                         conf.additional_fields,
-                        header_comma,
-                        config_csv,
-                        config_comma,
+                        output.config_csv,
+                        user_config_csv,
                         label,
                         samples.summary.count(),
                         samples.summary.min().unwrap_or_default(),
