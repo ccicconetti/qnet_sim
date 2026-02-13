@@ -12,10 +12,15 @@ pub struct ChainParams {
     pub ground_to_orbit_distance: f64,
     /// Number of satellite repeaters.
     pub num_repeaters: u32,
-    /// Minimum eleveation, in degrees.
+    /// Minimum elevation, in degrees.
     pub elevation_min: f64,
     /// Maximum elevation, in degrees.
     pub elevation_max: f64,
+    /// Perfect flag. A "perfect" chain is one with an odd number of
+    /// satellite repeaters alternating entangled photon generators and
+    /// quantum repeaters, so that there's a single possible logical topology
+    /// that interconnects the two on-ground stations at the chain end.
+    pub perfect: bool,
 }
 
 impl Default for ChainParams {
@@ -26,6 +31,7 @@ impl Default for ChainParams {
             num_repeaters: 1,
             elevation_min: 10.0,
             elevation_max: 60.0,
+            perfect: false,
         }
     }
 }
@@ -68,6 +74,11 @@ impl super::PhysicalTopologyParams for ChainParams {
         ogs_weight: super::NodeWeight,
         seed: u64,
     ) -> anyhow::Result<super::Graph> {
+        anyhow::ensure!(
+            !self.perfect || self.num_repeaters % 2 == 1,
+            "a perfect chain requires an odd number of repeaters"
+        );
+
         let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
 
         self.valid()?;
@@ -84,7 +95,23 @@ impl super::PhysicalTopologyParams for ChainParams {
 
         // Add SAT nodes.
         for cnt in 0..self.num_repeaters {
-            graph.add_node(sat_weight.clone_with_label(format!("rep#{}", cnt)));
+            let weight = if self.perfect {
+                let mut weight = sat_weight.clone();
+                if cnt % 2 == 0 {
+                    weight.is_repeater = false;
+                    weight.memory_qubits = 0;
+                    weight.detectors = 0;
+                    weight.clone_with_label(format!("gen#{}", cnt / 2))
+                } else {
+                    assert!(weight.is_repeater);
+                    weight.transmitters = 0;
+                    weight.clone_with_label(format!("rep#{}", cnt / 2))
+                }
+            } else {
+                sat_weight.clone_with_label(format!("rep#{}", cnt))
+            };
+
+            graph.add_node(weight);
         }
 
         // Add edges.
@@ -145,7 +172,8 @@ mod tests {
                 ground_to_orbit_distance: 1000.0,
                 num_repeaters: 0,
                 elevation_min: 10.0,
-                elevation_max: 60.0
+                elevation_max: 60.0,
+                perfect: false
             },
             NodeWeight::default_sat(),
             NodeWeight::default_ogs(),
@@ -161,6 +189,7 @@ mod tests {
                 num_repeaters: 4,
                 elevation_min: 10.0,
                 elevation_max: 60.0,
+                perfect: false,
             },
             NodeWeight::default_sat(),
             NodeWeight::default_ogs(),
@@ -177,5 +206,64 @@ mod tests {
         assert_float_eq::assert_f64_near!(4000.0, graph.distance(0, 3).unwrap());
         assert_float_eq::assert_f64_near!(7000.0, graph.distance(0, 4).unwrap());
         assert_float_eq::assert_f64_near!(10000.0, graph.distance(0, 5).unwrap());
+    }
+
+    #[test]
+    fn test_physical_topology_from_perfect_chain() {
+        // Invalid params.
+        for n in 0..10 {
+            assert!(PhysicalTopology::new(
+                &ChainParams {
+                    orbit_to_orbit_distance: 3000.0,
+                    ground_to_orbit_distance: 1000.0,
+                    num_repeaters: n * 2,
+                    elevation_min: 10.0,
+                    elevation_max: 60.0,
+                    perfect: true
+                },
+                NodeWeight::default_sat(),
+                NodeWeight::default_ogs(),
+                42,
+            )
+            .is_err());
+        }
+
+        // Valid perfect chains.
+        for n in 0..10 {
+            let graph = PhysicalTopology::new(
+                &ChainParams {
+                    orbit_to_orbit_distance: 3000.0,
+                    ground_to_orbit_distance: 1000.0,
+                    num_repeaters: n * 2 + 1,
+                    elevation_min: 10.0,
+                    elevation_max: 60.0,
+                    perfect: true,
+                },
+                NodeWeight::default_sat(),
+                NodeWeight::default_ogs(),
+                42,
+            )
+            .unwrap();
+
+            assert_eq!(
+                (2..(2 + n * 2 + 1)).collect::<Vec<u32>>(),
+                graph.sat_indices()
+            );
+            assert_eq!((0..2).collect::<Vec<u32>>(), graph.ogs_indices());
+            assert_eq!(n * 2 + 1 + 2, graph.graph().node_count() as u32);
+            println!("{}", petgraph::dot::Dot::new(&graph.graph));
+
+            for i in 2..(2 + n * 2 + 1) {
+                let w = graph.graph().node_weight(i.into()).unwrap();
+                if i % 2 == 0 {
+                    assert!(false == w.is_repeater);
+                    assert_eq!(0, w.memory_qubits);
+                    assert_eq!(0, w.detectors);
+                } else {
+                    assert!(true == w.is_repeater);
+                    assert_eq!(0, w.transmitters);
+                }
+            }
+        }
     }
 }

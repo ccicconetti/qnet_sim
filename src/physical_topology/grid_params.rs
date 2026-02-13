@@ -14,7 +14,7 @@ pub struct GridParams {
     pub num_orbits: u32,
     /// Number of satellites in each orbit.
     pub orbit_length: u32,
-    /// Minimum eleveation, in degrees.
+    /// Minimum elevation, in degrees.
     pub elevation_min: f64,
     /// Maximum elevation, in degrees.
     pub elevation_max: f64,

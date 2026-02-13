@@ -109,6 +109,7 @@ mod tests {
                     num_repeaters,
                     elevation_min: 10.0,
                     elevation_max: 60.0,
+                    perfect: false,
                 },
                 sat_weight: crate::physical_topology::NodeWeight {
                     label: None,
