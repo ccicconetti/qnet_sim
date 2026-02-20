@@ -528,10 +528,15 @@ pub fn save_outputs(outputs: Vec<Output>, conf: OutputSaveConf) -> anyhow::Resul
         } else {
             String::default()
         };
+        let additional_fields = if conf.additional_fields.is_empty() {
+            String::default()
+        } else {
+            format!("{},", conf.additional_fields)
+        };
         writeln!(
             &mut scalar_file,
             "{}{},{}{}",
-            conf.additional_fields,
+            additional_fields,
             output.config_csv,
             user_config_csv,
             output.scalar.to_csv()
@@ -544,7 +549,7 @@ pub fn save_outputs(outputs: Vec<Output>, conf: OutputSaveConf) -> anyhow::Resul
                         writeln!(
                             series_file,
                             "{}{},{}{},{},{}",
-                            conf.additional_fields,
+                            additional_fields,
                             output.config_csv,
                             user_config_csv,
                             labels.join(","),
@@ -568,7 +573,7 @@ pub fn save_outputs(outputs: Vec<Output>, conf: OutputSaveConf) -> anyhow::Resul
                     writeln!(
                         series_stats_file,
                         "{}{},{}{},{},{},{},{},{},{}",
-                        conf.additional_fields,
+                        additional_fields,
                         output.config_csv,
                         user_config_csv,
                         label,
