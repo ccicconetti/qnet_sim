@@ -374,7 +374,7 @@ impl crate::utils::CsvFriend for Applications {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct UserConfig {
+pub struct FullConfig {
     /// The duration of the simulation, in s.
     pub duration: f64,
     /// The warm-up period, in s.
@@ -412,7 +412,7 @@ impl UserConfigRecipe {
     }
 }
 
-impl UserConfig {
+impl FullConfig {
     pub fn default_with_recipe(user_config_recipe: UserConfigRecipe) -> Self {
         Self {
             duration: 1.0,
@@ -442,7 +442,7 @@ impl UserConfig {
     }
 }
 
-impl crate::utils::CsvFriend for UserConfig {
+impl crate::utils::CsvFriend for FullConfig {
     fn header(&self) -> String {
         let mut ret = "duration,warmup_period".to_string();
         if !self.sections_not_serialized.contains("physical_topology") {

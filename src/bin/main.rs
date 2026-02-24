@@ -3,8 +3,8 @@
 
 use clap::Parser;
 use qnet_ll_sim::config::Config;
+use qnet_ll_sim::full_config::{FullConfig, UserConfigRecipe};
 use qnet_ll_sim::simulation::Simulation;
-use qnet_ll_sim::user_config::{UserConfig, UserConfigRecipe};
 use qnet_ll_sim::utils::CsvFriend;
 
 #[derive(Debug, clap::Parser)]
@@ -85,7 +85,7 @@ async fn main() -> anyhow::Result<()> {
         } else {
             std::fs::write(
                 conf_path,
-                serde_json::to_string_pretty(&UserConfig::default_with_recipe(
+                serde_json::to_string_pretty(&FullConfig::default_with_recipe(
                     UserConfigRecipe::from_str(&args.template)?,
                 ))?,
             )?;
@@ -111,7 +111,7 @@ async fn main() -> anyhow::Result<()> {
     );
     let conf_file = std::fs::File::open(conf_path)?;
     let reader = std::io::BufReader::new(conf_file);
-    let user_config: UserConfig = serde_json::from_reader(reader)?;
+    let full_config: FullConfig = serde_json::from_reader(reader)?;
 
     // Create the configurations of all the experiments
     let configurations = std::sync::Arc::new(std::sync::Mutex::new(vec![]));
@@ -121,13 +121,13 @@ async fn main() -> anyhow::Result<()> {
         configurations
             .lock()
             .unwrap()
-            .push((config, user_config.clone()));
+            .push((config, full_config.clone()));
     }
 
     let (config_csv_header, user_config_csv_header) = {
         let lock = configurations.lock().unwrap();
-        if let Some((config, user_config)) = lock.first() {
-            (config.header(), user_config.header())
+        if let Some((config, full_config)) = lock.first() {
+            (config.header(), full_config.header())
         } else {
             return Ok(());
         }
@@ -140,15 +140,15 @@ async fn main() -> anyhow::Result<()> {
         tokio::spawn(async move {
             log::info!("spawned worker #{}", i);
             loop {
-                let (config, user_config) = {
+                let (config, full_config) = {
                     let mut lock = configurations.lock().unwrap();
-                    if let Some((config, user_config)) = lock.pop() {
-                        (config, user_config)
+                    if let Some((config, full_config)) = lock.pop() {
+                        (config, full_config)
                     } else {
                         break;
                     }
                 };
-                match Simulation::new(config, user_config, args.save_to_dot, args.print_metrics) {
+                match Simulation::new(config, full_config, args.save_to_dot, args.print_metrics) {
                     Ok(mut sim) => tx.send(sim.run()).unwrap(),
                     Err(err) => log::error!("error when running simulation: {}", err),
                 };

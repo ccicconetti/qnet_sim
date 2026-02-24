@@ -72,9 +72,9 @@ mod tests {
     use std::io::Write;
 
     use crate::config::*;
+    use crate::full_config::*;
     use crate::output::OutputSeriesSingle;
     use crate::simulation::Simulation;
-    use crate::user_config::*;
 
     fn check_interval(
         metric: &str,
@@ -101,8 +101,8 @@ mod tests {
         memory_qubits: u32,
         seed: u64,
         num_repeaters: u32,
-    ) -> (Config, UserConfig) {
-        let user_config = UserConfig {
+    ) -> (Config, FullConfig) {
+        let full_config = FullConfig {
             duration,
             warmup_period: 0.0,
             series_ignore: std::collections::HashSet::new(),
@@ -141,7 +141,7 @@ mod tests {
                     transmitters: 0,
                 },
             }),
-            fidelity_computer: crate::user_config::FidelityComputer::StaticFidelities(
+            fidelity_computer: crate::full_config::FidelityComputer::StaticFidelities(
                 crate::physical_topology::StaticFidelities {
                     f_o: 0.99,
                     f_g: 0.98,
@@ -150,7 +150,7 @@ mod tests {
                     f_gg: 0.95,
                 },
             ),
-            rate_computer: crate::user_config::RateComputer::FixedRate(
+            rate_computer: crate::full_config::RateComputer::FixedRate(
                 crate::physical_topology::FixedRate { rate: 1000.0 },
             ),
             logical_topology: LogicalTopology::default(),
@@ -159,14 +159,14 @@ mod tests {
                 max_requests: 100,
             }),
         };
-        (Config { seed }, user_config)
+        (Config { seed }, full_config)
     }
 
     fn make_grid_config(
         seed: u64,
         file_topo: Option<String>,
         grid_size: usize,
-    ) -> (Config, UserConfig) {
+    ) -> (Config, FullConfig) {
         let sat_weight = crate::physical_topology::NodeWeight {
             label: None,
             node_type: crate::physical_topology::NodeType::SAT,
@@ -280,13 +280,13 @@ mod tests {
                 ogs_weight,
             })
         };
-        let user_config = UserConfig {
+        let full_config = FullConfig {
             duration: 2.0,
             warmup_period: 0.0,
             series_ignore: std::collections::HashSet::new(),
             sections_not_serialized: std::collections::HashSet::new(),
             physical_topology,
-            fidelity_computer: crate::user_config::FidelityComputer::StaticFidelities(
+            fidelity_computer: crate::full_config::FidelityComputer::StaticFidelities(
                 crate::physical_topology::StaticFidelities {
                     f_o: 0.99,
                     f_g: 0.98,
@@ -295,7 +295,7 @@ mod tests {
                     f_gg: 0.95,
                 },
             ),
-            rate_computer: crate::user_config::RateComputer::FixedRate(
+            rate_computer: crate::full_config::RateComputer::FixedRate(
                 crate::physical_topology::FixedRate { rate: 100.0 },
             ),
             logical_topology: LogicalTopology::default(),
@@ -304,7 +304,7 @@ mod tests {
                 max_requests: 1,
             }),
         };
-        (Config { seed }, user_config)
+        (Config { seed }, full_config)
     }
 
     #[ignore]
@@ -320,8 +320,8 @@ mod tests {
 
         let mut sim = None;
         for seed in 0..100 {
-            let (config, user_config) = make_config(10.0, 20, seed, 1);
-            let cand_sim = Simulation::new(config, user_config, false, false)?;
+            let (config, full_config) = make_config(10.0, 20, seed, 1);
+            let cand_sim = Simulation::new(config, full_config, false, false)?;
             if cand_sim.logical_path(0, 1).len() == 2 {
                 sim = Some(cand_sim);
                 break;
@@ -367,8 +367,8 @@ mod tests {
 
         let mut sim = None;
         for seed in 0..100 {
-            let (config, user_config) = make_config(20.0, 100, seed, 3);
-            let cand_sim = Simulation::new(config, user_config, false, false)?;
+            let (config, full_config) = make_config(20.0, 100, seed, 3);
+            let cand_sim = Simulation::new(config, full_config, false, false)?;
             if cand_sim.logical_path(0, 1).len() == 3 {
                 sim = Some(cand_sim);
                 break;
@@ -418,13 +418,13 @@ mod tests {
         let mut path = remove_me_dir.dir();
         path.push("topo.txt");
 
-        let (config, user_config) =
+        let (config, full_config) =
             make_grid_config(seed, Some(path.to_str().unwrap().to_string()), 3);
-        let mut sim = Simulation::new(config, user_config, false, false)?;
+        let mut sim = Simulation::new(config, full_config, false, false)?;
         let output_file = sim.run();
         println!("{:?}", output_file.scalar.values());
-        let (config, user_config) = make_grid_config(seed, None, 3);
-        let mut sim = Simulation::new(config, user_config, false, false)?;
+        let (config, full_config) = make_grid_config(seed, None, 3);
+        let mut sim = Simulation::new(config, full_config, false, false)?;
         let output_grid = sim.run();
         println!("{:?}", output_grid.scalar.values());
 
