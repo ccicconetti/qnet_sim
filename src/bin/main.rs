@@ -4,6 +4,8 @@
 use clap::Parser;
 use qnet_ll_sim::config::Config;
 use qnet_ll_sim::full_config::{FullConfig, UserConfigRecipe};
+use qnet_ll_sim::mini_config::MiniConfig;
+use qnet_ll_sim::mini_simulation::MiniSimulation;
 use qnet_ll_sim::simulation::Simulation;
 use qnet_ll_sim::utils::CsvFriend;
 
@@ -13,12 +15,15 @@ struct Args {
     /// Simulation configuration.
     #[arg(long, short, default_value_t = String::from("conf.json"))]
     conf: String,
-    /// Create a template for the simulation configuration. Possible values: chain, grid, leo.
+    /// Create a template for the simulation configuration. Possible values: chain, grid, leo, mini.
     #[arg(long, short, default_value_t = Default::default())]
     template: String,
     /// Initial seed to initialize the pseudo-random number generators
     #[arg(long, default_value_t = 0)]
     seed_init: u64,
+    /// Run a mini simulation instead of the full one.
+    #[arg(long, default_value_t = false)]
+    mini: bool,
     /// Final seed to initialize the pseudo-random number generators
     #[arg(long, default_value_t = 1)]
     seed_end: u64,
@@ -54,6 +59,27 @@ struct Args {
     version: bool,
 }
 
+#[derive(Clone)]
+enum SimConfig {
+    Full(FullConfig),
+    Mini(MiniConfig),
+}
+
+impl CsvFriend for SimConfig {
+    fn header(&self) -> String {
+        match self {
+            SimConfig::Full(full_config) => full_config.header(),
+            SimConfig::Mini(mini_config) => mini_config.header(),
+        }
+    }
+    fn to_csv(&self) -> String {
+        match self {
+            SimConfig::Full(full_config) => full_config.to_csv(),
+            SimConfig::Mini(mini_config) => mini_config.to_csv(),
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     env_logger::init();
@@ -83,12 +109,19 @@ async fn main() -> anyhow::Result<()> {
         if conf_path.exists() {
             println!("File {:#?} exists and will not be overwritten", conf_path);
         } else {
-            std::fs::write(
-                conf_path,
-                serde_json::to_string_pretty(&FullConfig::default_with_recipe(
-                    UserConfigRecipe::from_str(&args.template)?,
-                ))?,
-            )?;
+            if args.mini || args.template == "mini" {
+                std::fs::write(
+                    conf_path,
+                    serde_json::to_string_pretty(&MiniConfig::default())?,
+                )?;
+            } else {
+                std::fs::write(
+                    conf_path,
+                    serde_json::to_string_pretty(&FullConfig::default_with_recipe(
+                        UserConfigRecipe::from_str(&args.template)?,
+                    ))?,
+                )?;
+            }
         }
         return Ok(());
     }
@@ -111,23 +144,27 @@ async fn main() -> anyhow::Result<()> {
     );
     let conf_file = std::fs::File::open(conf_path)?;
     let reader = std::io::BufReader::new(conf_file);
-    let full_config: FullConfig = serde_json::from_reader(reader)?;
+
+    let sim_config = if args.mini {
+        let mini_config: MiniConfig = serde_json::from_reader(reader)?;
+        SimConfig::Mini(mini_config)
+    } else {
+        let full_config: FullConfig = serde_json::from_reader(reader)?;
+        SimConfig::Full(full_config)
+    };
 
     // Create the configurations of all the experiments
     let configurations = std::sync::Arc::new(std::sync::Mutex::new(vec![]));
     for seed in args.seed_init..args.seed_end {
         let config = Config { seed };
 
-        configurations
-            .lock()
-            .unwrap()
-            .push((config, full_config.clone()));
+        configurations.lock().unwrap().push(config);
     }
 
     let (config_csv_header, user_config_csv_header) = {
         let lock = configurations.lock().unwrap();
-        if let Some((config, full_config)) = lock.first() {
-            (config.header(), full_config.header())
+        if let Some(config) = lock.first() {
+            (config.header(), sim_config.header())
         } else {
             return Ok(());
         }
@@ -137,21 +174,35 @@ async fn main() -> anyhow::Result<()> {
     for i in 0..std::cmp::min(args.concurrency, (args.seed_end - args.seed_init) as usize) {
         let tx = tx.clone();
         let configurations = configurations.clone();
+        let sim_config = sim_config.clone();
         tokio::spawn(async move {
             log::info!("spawned worker #{}", i);
             loop {
-                let (config, full_config) = {
+                let config = {
                     let mut lock = configurations.lock().unwrap();
-                    if let Some((config, full_config)) = lock.pop() {
-                        (config, full_config)
+                    if let Some(config) = lock.pop() {
+                        config
                     } else {
                         break;
                     }
                 };
-                match Simulation::new(config, full_config, args.save_to_dot, args.print_metrics) {
-                    Ok(mut sim) => tx.send(sim.run()).unwrap(),
-                    Err(err) => log::error!("error when running simulation: {}", err),
-                };
+                match &sim_config {
+                    SimConfig::Full(full_config) => match Simulation::new(
+                        config,
+                        full_config.clone(),
+                        args.save_to_dot,
+                        args.print_metrics,
+                    ) {
+                        Ok(mut sim) => tx.send(sim.run()).unwrap(),
+                        Err(err) => log::error!("error when running simulation: {}", err),
+                    },
+                    SimConfig::Mini(mini_config) => {
+                        match MiniSimulation::new(config, mini_config.clone(), args.print_metrics) {
+                            Ok(mut sim) => tx.send(sim.run()).unwrap(),
+                            Err(err) => log::error!("error when running simulation: {}", err),
+                        }
+                    }
+                }
             }
             log::info!("terminated worker #{}", i);
         });
