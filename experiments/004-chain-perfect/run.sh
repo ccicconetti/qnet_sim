@@ -36,7 +36,7 @@ if [ "$SEED_END" == "" ] ; then
 fi
 
 num_repeaters_v="7"
-num_pairs_v="5 10 15 20 25 30"
+num_pairs_v="5 10 15 20 25 30 35 40 45 50"
 
 #
 # Execute experiments
