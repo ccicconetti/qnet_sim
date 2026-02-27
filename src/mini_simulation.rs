@@ -98,7 +98,7 @@ impl MiniSimulation {
     }
 
     /// Run a simulation with a sync protocol.
-    fn run_sync(&mut self) -> crate::output::Output {
+    fn run_sync(&mut self) {
         let conf = &self.mini_config;
         let params = &conf.mini_parameters;
         let conf_100th = conf.duration / 100.0;
@@ -203,16 +203,6 @@ impl MiniSimulation {
         //     "epr_register_final_len",
         //     self.network.epr_register.len() as f64,
         // );
-
-        // return the simulation output
-        let single = std::mem::take(&mut self.single);
-        let series = std::mem::take(&mut self.series);
-        crate::output::Output {
-            scalar: single,
-            series,
-            config_csv: self.config.to_csv(),
-            user_config_csv: self.mini_config.to_csv(),
-        }
     }
 
     /// Add all the events to the event queue and save metrics.
@@ -240,6 +230,16 @@ impl MiniSimulation {
         match &self.mini_config.mini_parameters.protocol {
             crate::mini_config::Protocol::Sync(_) => self.run_sync(),
             crate::mini_config::Protocol::Async => todo!(),
+        }
+
+        // return the simulation output
+        let single = std::mem::take(&mut self.single);
+        let series = std::mem::take(&mut self.series);
+        crate::output::Output {
+            scalar: single,
+            series,
+            config_csv: self.config.to_csv(),
+            user_config_csv: self.mini_config.to_csv(),
         }
     }
 }
