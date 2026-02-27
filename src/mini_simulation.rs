@@ -36,6 +36,15 @@ impl MiniSimulation {
         );
         single.init("bsm_prob", crate::output::ScalarMetricType::Avg, crate::output::MetricMetadata::new("probability", "Probability of a successful Bell State Measurement performed during an Entanglement Swapping operation", false));
         single.init(
+            "ebit_prob",
+            crate::output::ScalarMetricType::Avg,
+            crate::output::MetricMetadata::new(
+                "probability",
+                "Probability that an end-to-end entanglement is established",
+                false,
+            ),
+        );
+        single.init(
             "bsm_tot",
             crate::output::ScalarMetricType::Count,
             crate::output::MetricMetadata::new(

@@ -6,6 +6,8 @@ use rand::SeedableRng;
 use rand_distr::{num_traits::Inv, Distribution};
 
 pub struct MiniSync {
+    /// Maximum time allowed for the local entanglement phase, in s.
+    local_entanglement_threshold: f64,
     // Time slot duration, in s.
     pub time_slot_duration: f64,
     /// Exponentially distributed r.v. to generate the inter-arrival times.
@@ -49,6 +51,7 @@ impl MiniSync {
 
         Self {
             time_slot_duration,
+            local_entanglement_threshold,
             rv: rand_distr::Exp::new(mini_config.mini_parameters.rate).unwrap(),
             rng: rand::rngs::StdRng::seed_from_u64(config.seed),
             mini_config,
@@ -56,7 +59,7 @@ impl MiniSync {
     }
 
     pub fn handle_time_slot(&mut self, now: u64) -> Vec<Sample> {
-        let samples = vec![];
+        let mut samples = vec![];
         log::debug!("new time slot");
 
         // generate the EPR pairs, one per each pair of adjacent nodes
@@ -78,6 +81,21 @@ impl MiniSync {
                 right: left + 1,
                 generation_rel_time,
             });
+        }
+        if epr_pairs
+            .iter()
+            .max_by(|x, y| {
+                x.generation_rel_time
+                    .partial_cmp(&y.generation_rel_time)
+                    .unwrap()
+            })
+            .unwrap()
+            .generation_rel_time
+            > self.local_entanglement_threshold
+        {
+            samples.push(Sample::ScalarAvg("ebit_prob".to_string(), 0.0));
+        } else {
+            samples.push(Sample::ScalarAvg("ebit_prob".to_string(), 1.0));
         }
 
         samples
