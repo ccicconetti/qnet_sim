@@ -7,12 +7,13 @@ use std::io::Write;
 
 use crate::event::{Event, EventHandler, EventType};
 use crate::physical_topology;
+use crate::timed_event::TimedEvent;
 use crate::{output::Sample, utils::CsvFriend};
 
 pub struct Simulation {
     // internal data structures
     network: crate::network::Network,
-    events: crate::event_queue::EventQueue,
+    events: crate::event_queue::EventQueue<Event>,
     single: crate::output::OutputScalar,
     series: crate::output::OutputSeries,
 

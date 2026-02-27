@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use crate::output::Sample;
+use crate::timed_event::TimedEvent;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct EprGeneratedData {
@@ -334,16 +335,6 @@ impl Event {
         }
     }
 
-    /// Return the time of the event, in ns.
-    pub fn time(&self) -> u64 {
-        self.time
-    }
-
-    /// Advance the event time by the specified period, in ns.
-    pub fn advance(&mut self, advance_time: u64) {
-        self.time += advance_time
-    }
-
     /// Reset the event time, in s.
     pub fn reset(&mut self, time_relative: f64) {
         self.time = crate::utils::to_nanoseconds(time_relative);
@@ -359,6 +350,18 @@ impl Event {
                 self.event_type
             ),
         }
+    }
+}
+
+impl crate::timed_event::TimedEvent for Event {
+    /// Return the time of the event, in ns.
+    fn time(&self) -> u64 {
+        self.time
+    }
+
+    /// Advance the event time by the specified period, in ns.
+    fn advance(&mut self, advance_time: u64) {
+        self.time += advance_time
     }
 }
 

@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: © 2025 Claudio Cicconetti <c.cicconetti@iit.cnr.it>
 // SPDX-License-Identifier: MIT
 
+use rand::{Rng, SeedableRng};
+
 use crate::event::*;
 use crate::output::Sample;
-use rand::{Rng, SeedableRng};
+use crate::timed_event::TimedEvent;
 
 #[derive(Debug, Clone)]
 struct EsRequestStatusWaitingData {

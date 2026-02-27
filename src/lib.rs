@@ -9,6 +9,7 @@ pub mod event_queue;
 pub mod full_config;
 pub mod logical_topology;
 pub mod mini_config;
+pub mod mini_event;
 pub mod mini_simulation;
 pub mod network;
 pub mod nic;
@@ -18,4 +19,5 @@ pub mod physical_topology;
 pub mod simulation;
 #[cfg(test)]
 pub mod tests;
+pub mod timed_event;
 pub mod utils;

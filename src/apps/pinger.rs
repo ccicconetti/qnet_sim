@@ -3,6 +3,7 @@
 
 use crate::event::*;
 use crate::output::Sample;
+use crate::timed_event::TimedEvent;
 
 /// Application that requests an EPR towards another node and measures the
 /// fidelity immediately after it is established.

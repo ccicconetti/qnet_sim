@@ -8,6 +8,7 @@ use rand_distr::Distribution;
 
 use crate::event::*;
 use crate::output::Sample;
+use crate::timed_event::TimedEvent;
 
 #[derive(Debug)]
 pub struct EprGenerator {
