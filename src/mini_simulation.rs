@@ -1,21 +1,22 @@
 // SPDX-FileCopyrightText: © 2026 Claudio Cicconetti <c.cicconetti@iit.cnr.it>
 // SPDX-License-Identifier: MIT
 
-use rand_distr::num_traits::Inv;
-
 use crate::mini_event::{MiniEvent, MiniEventType};
 use crate::output::Sample;
 use crate::timed_event::TimedEvent;
 use crate::utils::CsvFriend;
 
 pub struct MiniSimulation {
-    // internal data structures
+    // Event queue.
     events: crate::event_queue::EventQueue<MiniEvent>,
+    /// Output data (scalar values).
     single: crate::output::OutputScalar,
+    /// Output data (time series).
     series: crate::output::OutputSeries,
 
-    // configuration
+    /// Simulation configuration (generic).
     config: crate::config::Config,
+    /// Simulation configuration (specific for mini simulations).
     mini_config: crate::mini_config::MiniConfig,
 }
 
@@ -100,12 +101,7 @@ impl MiniSimulation {
     /// Run a simulation with a sync protocol.
     fn run_sync(&mut self) {
         let conf = &self.mini_config;
-        let params = &conf.mini_parameters;
         let conf_100th = conf.duration / 100.0;
-        let sync_params = match &params.protocol {
-            crate::mini_config::Protocol::Sync(sync_config) => sync_config,
-            _ => panic!("wrong simulation protocol"),
-        };
 
         // initialize simulated time
         let mut now;
@@ -119,34 +115,15 @@ impl MiniSimulation {
             .push(MiniEvent::new(conf.duration, MiniEventType::ExperimentEnd));
         self.events
             .push(MiniEvent::new(0.0, MiniEventType::Progress(0)));
+        self.events
+            .push(MiniEvent::new(0.0, MiniEventType::TimeSlot));
 
         // metrics
         let mut num_events = 0;
 
-        //
         // compute the time slot duration
-        //
-
-        // target probability that a local entanglement succeeds in a time slot
-        let prob_local_entanglement = sync_params
-            .prob_local_complete
-            .powf(((params.num_repeaters + 1) as f64).inv());
-
-        // maximum time allowed for the local entanglement phase
-        let local_entanglement_threshold =
-            -params.rate.inv() * (1.0 - prob_local_entanglement).ln();
-        assert!(
-            local_entanglement_threshold > 0.0,
-            "negative max time to wait for local entanglement"
-        );
-
-        // maximum time needed for classical signaling
-        let max_signalling_time =
-            crate::utils::distance_to_latency(params.num_repeaters as f64 * params.distance);
-
-        let time_slot_duration = local_entanglement_threshold + max_signalling_time;
-        log::debug!("prob_local_entanglement = {}, local_entanglement_threshold = {}, max_signalling_time = {}, time_slot_duration = {}",prob_local_entanglement, local_entanglement_threshold,max_signalling_time,time_slot_duration);
-
+        let mut mini_sync = crate::mini_sync::MiniSync::new(&self.config, self.mini_config.clone());
+        let time_slot_duration = mini_sync.time_slot_duration;
         self.single
             .one_time("time_slot_duration", time_slot_duration);
 
@@ -190,6 +167,10 @@ impl MiniSimulation {
                             vec![],
                         )
                     }
+                    MiniEventType::TimeSlot => (
+                        vec![MiniEvent::new(time_slot_duration, MiniEventType::TimeSlot)],
+                        mini_sync.handle_time_slot(now),
+                    ),
                 };
                 self.update(new_events, new_samples);
             }

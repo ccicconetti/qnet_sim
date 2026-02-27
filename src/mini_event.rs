@@ -11,6 +11,8 @@ pub enum MiniEventType {
     ExperimentEnd,
     /// Print progress.
     Progress(u16),
+    /// A new time slot begins.
+    TimeSlot,
 }
 
 /// A mini simulation event.
@@ -27,14 +29,6 @@ impl MiniEvent {
     pub fn new(time_relative: f64, event_type: MiniEventType) -> Self {
         Self {
             time: crate::utils::to_nanoseconds(time_relative),
-            event_type,
-        }
-    }
-
-    /// Create a new event to be executed right now..
-    pub fn immediate(event_type: MiniEventType) -> Self {
-        Self {
-            time: 0,
             event_type,
         }
     }

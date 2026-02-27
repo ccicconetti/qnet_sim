@@ -11,6 +11,7 @@ pub mod logical_topology;
 pub mod mini_config;
 pub mod mini_event;
 pub mod mini_simulation;
+pub mod mini_sync;
 pub mod network;
 pub mod nic;
 pub mod node;
