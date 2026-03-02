@@ -1,13 +1,13 @@
 {
-  "duration": 100.0,
+  "duration": $DURATION,
   "warmup_period": 0.0,
   "series_ignore": [],
   "sections_not_serialized": [],
   "physical_topology": {
     "Chain": {
       "chain_params": {
-        "orbit_to_orbit_distance": 3000000.0,
-        "ground_to_orbit_distance": 1000000.0,
+        "orbit_to_orbit_distance": 5000000.0,
+        "ground_to_orbit_distance": 5000000.0,
         "num_repeaters": $NUM_REPEATERS,
         "elevation_min": 10.0,
         "elevation_max": 60.0,
@@ -17,7 +17,7 @@
         "label": null,
         "node_type": "SAT",
         "is_repeater": true,
-        "memory_qubits": 100,
+        "memory_qubits": 10,
         "decay_rate": 1.0,
         "swapping_success_prob": 0.95,
         "swapping_duration": 0.001,
@@ -29,7 +29,7 @@
         "label": null,
         "node_type": "OGS",
         "is_repeater": false,
-        "memory_qubits": 100,
+        "memory_qubits": 10,
         "decay_rate": 1.0,
         "swapping_success_prob": 0.0,
         "swapping_duration": 0.0,

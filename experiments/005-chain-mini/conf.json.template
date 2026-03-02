@@ -1,0 +1,21 @@
+{
+  "duration": $DURATION,
+  "warmup_period": 0.0,
+  "series_ignore": [],
+  "sections_not_serialized": [],
+  "mini_parameters": {
+    "protocol": {
+      "Sync": {
+        "prob_local_complete": 0.95
+      }
+    },
+    "num_repeaters": $NUM_REPEATERS,
+    "distance": 10000000.0,
+    "rate": 100.0,
+    "fidelity_init": 0.95,
+    "decay_rate": 1.0,
+    "swapping_success_prob": 0.95,
+    "swapping_duration": 0.001,
+    "correction_duration": 0.001
+  }
+}

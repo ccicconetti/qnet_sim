@@ -35,9 +35,7 @@ if [ "$SEED_END" == "" ] ; then
     SEED_END=10
 fi
 
-num_repeaters_v="7"
-num_pairs_v="5 10 15 20 25 30 35 40 45 50"
-num_pairs_v="5 10 20"
+num_repeaters_v="1 3 5 7"
 
 #
 # Execute experiments
@@ -51,25 +49,15 @@ fi
 rm conf.json 2> /dev/null
 
 for NUM_REPEATERS in $num_repeaters_v ; do
-for num_pairs in $num_pairs_v ; do
 
-    echo "# num_repeaters $NUM_REPEATERS, num_pairs $num_pairs"
+    echo "# num_repeaters $NUM_REPEATERS"
 
-    PAIRS="[0,1]"
-    for (( i = 1 ; i < $num_pairs ; i++ )) ; do
-        if [ $(( i % 2)) -eq 0 ] ; then
-            PAIRS="$PAIRS,[0,1]"
-        else
-            PAIRS="$PAIRS,[1,0]"
-        fi
-    done
-
-    export DURATION NUM_REPEATERS PAIRS
+    export DURATION NUM_REPEATERS
     envsubst < conf.json.template > conf.json
 
-    cmd="./qnet_ll_sim --append \
-        --additional-fields $num_pairs,$NUM_REPEATERS \
-        --additional-header num_pairs,num_repeaters \
+    cmd="./qnet_ll_sim --mini \
+        --save-config \
+        --append \
         --seed-init $SEED_INIT --seed-end $SEED_END"
 
 
@@ -79,7 +67,6 @@ for num_pairs in $num_pairs_v ; do
         eval $cmd
     fi
 
-done
 done
 
 rm conf.json 2> /dev/null
