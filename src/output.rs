@@ -596,6 +596,25 @@ pub fn save_outputs(outputs: Vec<Output>, conf: OutputSaveConf) -> anyhow::Resul
     Ok(())
 }
 
+pub fn add_all_samples(
+    now: u64,
+    samples: Vec<Sample>,
+    single: &mut OutputScalar,
+    series: &mut OutputSeries,
+) {
+    for sample in samples {
+        match sample {
+            Sample::ScalarOneTime(name, value) => single.one_time(&name, value),
+            Sample::ScalarAvg(name, value) => single.avg(&name, value),
+            Sample::ScalarTimeAvg(name, value) => single.time_avg(&name, now, value),
+            Sample::ScalarCount(name) => single.count(&name),
+            Sample::Series(name, labels, value) => {
+                series.add(&name, labels, crate::utils::to_seconds(now), value)
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

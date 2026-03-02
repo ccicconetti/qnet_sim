@@ -90,6 +90,86 @@ impl MiniSync {
         }
     }
 
+    pub fn get_metrics(
+        series_ignore: std::collections::HashSet<String>,
+    ) -> (crate::output::OutputScalar, crate::output::OutputSeries) {
+        let mut single = crate::output::OutputScalar::default();
+        single.init(
+            "time_slot_duration",
+            crate::output::ScalarMetricType::OneTime,
+            crate::output::MetricMetadata::new("s", "Time slot duration", true),
+        );
+        single.init("bsm_prob", crate::output::ScalarMetricType::Avg, crate::output::MetricMetadata::new("probability", "Probability of a successful Bell State Measurement performed during an Entanglement Swapping operation", false));
+        single.init(
+            "ebit_prob",
+            crate::output::ScalarMetricType::Avg,
+            crate::output::MetricMetadata::new(
+                "probability",
+                "Probability that an end-to-end entanglement is established",
+                false,
+            ),
+        );
+        single.init(
+            "ebit_tot",
+            crate::output::ScalarMetricType::Count,
+            crate::output::MetricMetadata::new(
+                "ebits",
+                "Number of successful end-to-end entanglements",
+                false,
+            ),
+        );
+        single.init(
+            "bsm_tot",
+            crate::output::ScalarMetricType::Count,
+            crate::output::MetricMetadata::new(
+                "operations",
+                "Total number of Entanglement Swapping operations performed",
+                false,
+            ),
+        );
+        single.init(
+            "event_queue_len",
+            crate::output::ScalarMetricType::TimeAvg,
+            crate::output::MetricMetadata::new(
+                "events",
+                "Average number of events in the queue",
+                false,
+            ),
+        );
+        single.init(
+            "num_events",
+            crate::output::ScalarMetricType::OneTime,
+            crate::output::MetricMetadata::new(
+                "events",
+                "Total number of events in the simulation",
+                true,
+            ),
+        );
+        single.init(
+            "execution_time",
+            crate::output::ScalarMetricType::OneTime,
+            crate::output::MetricMetadata::new("s", "Simulation real-time duration", true),
+        );
+        single.init(
+            "epr_register_final_len",
+            crate::output::ScalarMetricType::OneTime,
+            crate::output::MetricMetadata::new(
+                "EPR pairs",
+                "Total number of residual EPR pairs in the register",
+                true,
+            ),
+        );
+
+        let mut series = crate::output::OutputSeries::new(series_ignore);
+        series.init(
+            "fidelity",
+            &["node_id"],
+            crate::output::MetricMetadata::new("[0,1]", "Measured fidelity", false),
+        );
+
+        (single, series)
+    }
+
     pub fn handle_time_slot(&mut self, now: u64) -> Vec<Sample> {
         let mut samples = vec![];
 
@@ -165,6 +245,7 @@ impl MiniSync {
 
         // At this point, we are sure that the ebit succeeds.
         samples.push(Sample::ScalarAvg("ebit_prob".to_string(), 1.0));
+        samples.push(Sample::ScalarCount("ebit_tot".to_string()));
 
         let mut bsm_candidates = std::collections::BinaryHeap::new();
         for repeater in 0..n {
@@ -250,5 +331,64 @@ impl MiniSync {
         );
 
         samples
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Config;
+    use crate::mini_config::MiniConfig;
+
+    #[test]
+    fn test_mini_sync() {
+        let num_repeaters_values = [1, 2, 3, 5];
+        let mut ebit_probs = vec![];
+        let mut fidelities = vec![];
+        for num_repeaters in num_repeaters_values {
+            let mut mini_config = MiniConfig::default();
+            mini_config.mini_parameters.num_repeaters = num_repeaters;
+            let mut mini_sync = MiniSync::new(&Config { seed: 42 }, mini_config);
+
+            let mut samples = vec![];
+            let time_slot_duration = 100000000_u64;
+            let num_time_slots = 1000;
+            for i in 0..num_time_slots {
+                samples.append(&mut mini_sync.handle_time_slot(i * time_slot_duration));
+            }
+
+            let (mut single, mut series) = MiniSync::get_metrics(std::collections::HashSet::new());
+            single.enable(0);
+            series.enable();
+
+            crate::output::add_all_samples(
+                num_time_slots * time_slot_duration,
+                samples,
+                &mut single,
+                &mut series,
+            );
+
+            let bsm_prob = *single.values().get("bsm_prob").unwrap();
+            let ebit_prob = *single.values().get("ebit_prob").unwrap();
+            let ebit_tot = *single.values().get("ebit_tot").unwrap();
+            println!(
+                "{} repeaters: {} {} {}",
+                num_repeaters, bsm_prob, ebit_prob, ebit_tot
+            );
+            assert_eq!(95, (bsm_prob * 100.0).round() as usize);
+            assert_eq!((ebit_prob * 1000.0).round() as usize, ebit_tot as usize);
+            ebit_probs.push(ebit_prob);
+
+            let fidelity = series.series.get(&String::from("fidelity")).unwrap();
+            let (_min, avg, _max, cnt) = fidelity.stats();
+            println!("{} repeaters: {} {}", num_repeaters, avg, cnt);
+            assert_eq!(cnt, ebit_tot as usize * 2);
+            fidelities.push(avg);
+        }
+
+        for i in 1..ebit_probs.len() {
+            assert!(ebit_probs[i] < ebit_probs[i - 1]);
+            assert!(fidelities[i] < fidelities[i - 1]);
+        }
     }
 }

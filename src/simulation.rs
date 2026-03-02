@@ -370,18 +370,7 @@ impl Simulation {
             self.events.push(event);
         }
         let now = self.events.last_time();
-        for sample in samples {
-            match sample {
-                Sample::ScalarOneTime(name, value) => self.single.one_time(&name, value),
-                Sample::ScalarAvg(name, value) => self.single.avg(&name, value),
-                Sample::ScalarTimeAvg(name, value) => self.single.time_avg(&name, now, value),
-                Sample::ScalarCount(name) => self.single.count(&name),
-                Sample::Series(name, labels, value) => {
-                    self.series
-                        .add(&name, labels, crate::utils::to_seconds(now), value)
-                }
-            }
-        }
+        crate::output::add_all_samples(now, samples, &mut self.single, &mut self.series);
     }
 
     /// Run a simulation.

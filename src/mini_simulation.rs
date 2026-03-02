@@ -28,70 +28,8 @@ impl MiniSimulation {
     ) -> anyhow::Result<Self> {
         anyhow::ensure!(mini_config.duration > 0.0, "vanishing duration");
 
-        let mut single = crate::output::OutputScalar::default();
-        single.init(
-            "time_slot_duration",
-            crate::output::ScalarMetricType::OneTime,
-            crate::output::MetricMetadata::new("s", "Time slot duration", true),
-        );
-        single.init("bsm_prob", crate::output::ScalarMetricType::Avg, crate::output::MetricMetadata::new("probability", "Probability of a successful Bell State Measurement performed during an Entanglement Swapping operation", false));
-        single.init(
-            "ebit_prob",
-            crate::output::ScalarMetricType::Avg,
-            crate::output::MetricMetadata::new(
-                "probability",
-                "Probability that an end-to-end entanglement is established",
-                false,
-            ),
-        );
-        single.init(
-            "bsm_tot",
-            crate::output::ScalarMetricType::Count,
-            crate::output::MetricMetadata::new(
-                "operations",
-                "Total number of Entanglement Swapping operations performed",
-                false,
-            ),
-        );
-        single.init(
-            "event_queue_len",
-            crate::output::ScalarMetricType::TimeAvg,
-            crate::output::MetricMetadata::new(
-                "events",
-                "Average number of events in the queue",
-                false,
-            ),
-        );
-        single.init(
-            "num_events",
-            crate::output::ScalarMetricType::OneTime,
-            crate::output::MetricMetadata::new(
-                "events",
-                "Total number of events in the simulation",
-                true,
-            ),
-        );
-        single.init(
-            "execution_time",
-            crate::output::ScalarMetricType::OneTime,
-            crate::output::MetricMetadata::new("s", "Simulation real-time duration", true),
-        );
-        single.init(
-            "epr_register_final_len",
-            crate::output::ScalarMetricType::OneTime,
-            crate::output::MetricMetadata::new(
-                "EPR pairs",
-                "Total number of residual EPR pairs in the register",
-                true,
-            ),
-        );
-
-        let mut series = crate::output::OutputSeries::new(mini_config.series_ignore.clone());
-        series.init(
-            "fidelity",
-            &["node_id"],
-            crate::output::MetricMetadata::new("[0,1]", "Measured fidelity", false),
-        );
+        let (single, series) =
+            crate::mini_sync::MiniSync::get_metrics(mini_config.series_ignore.clone());
 
         // Terminate immediately if the user requested to print metrics.
         if print_metrics {
@@ -206,18 +144,7 @@ impl MiniSimulation {
             self.events.push(event);
         }
         let now = self.events.last_time();
-        for sample in samples {
-            match sample {
-                Sample::ScalarOneTime(name, value) => self.single.one_time(&name, value),
-                Sample::ScalarAvg(name, value) => self.single.avg(&name, value),
-                Sample::ScalarTimeAvg(name, value) => self.single.time_avg(&name, now, value),
-                Sample::ScalarCount(name) => self.single.count(&name),
-                Sample::Series(name, labels, value) => {
-                    self.series
-                        .add(&name, labels, crate::utils::to_seconds(now), value)
-                }
-            }
-        }
+        crate::output::add_all_samples(now, samples, &mut self.single, &mut self.series);
     }
 
     /// Run a simulation.
