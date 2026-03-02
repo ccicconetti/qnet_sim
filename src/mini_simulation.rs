@@ -86,7 +86,12 @@ impl MiniSimulation {
             ),
         );
 
-        let series = crate::output::OutputSeries::new(mini_config.series_ignore.clone());
+        let mut series = crate::output::OutputSeries::new(mini_config.series_ignore.clone());
+        series.init(
+            "fidelity",
+            &["node_id"],
+            crate::output::MetricMetadata::new("[0,1]", "Measured fidelity", false),
+        );
 
         // Terminate immediately if the user requested to print metrics.
         if print_metrics {
@@ -189,10 +194,10 @@ impl MiniSimulation {
         self.single.one_time("num_events", num_events as f64);
         self.single
             .one_time("execution_time", real_now.elapsed().as_secs_f64());
-        // self.single.one_time(
-        //     "epr_register_final_len",
-        //     self.network.epr_register.len() as f64,
-        // );
+        self.single.one_time(
+            "epr_register_final_len",
+            mini_sync.epr_register.len() as f64,
+        );
     }
 
     /// Add all the events to the event queue and save metrics.
