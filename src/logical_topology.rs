@@ -224,7 +224,9 @@ fn physical_to_logical_random_greedy(
     let mut paths_not_found = std::collections::HashSet::new();
     for s in physical_topology.ogs_indices() {
         for d in physical_topology.ogs_indices() {
-            paths_not_found.insert((s, d));
+            if s != d {
+                paths_not_found.insert((s, d));
+            }
         }
     }
 
@@ -300,7 +302,7 @@ fn physical_to_logical_random_greedy(
         paths_not_found.is_empty(),
         "could not find logical paths for the following pairs ({} out of {}) for the physical topology below:{:?}\n{:?}\n{:?}",
         paths_not_found.len(),
-        physical_topology.ogs_indices().len().pow(2),
+        physical_topology.ogs_indices().len() * (physical_topology.ogs_indices().len() - 1),
         paths_not_found,
         physical_topology,
         logical_graph
