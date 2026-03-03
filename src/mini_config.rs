@@ -26,6 +26,8 @@ pub enum Protocol {
 pub struct MiniParameters {
     /// Protocol type.
     pub protocol: Protocol,
+    /// Add a preliminary phase in the time slot to create the path.
+    pub create_path: bool,
     /// Number of repeaters. The number of entangled source generators is
     /// the number of repeaters + 1.
     pub num_repeaters: u32,
@@ -49,6 +51,7 @@ impl Default for MiniParameters {
     fn default() -> Self {
         Self {
             protocol: Protocol::Sync(SyncConfig::default()),
+            create_path: false,
             num_repeaters: 1,
             distance: 1000000.0,
             rate: 100.0,

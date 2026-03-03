@@ -9,6 +9,7 @@
         "prob_local_complete": 0.95
       }
     },
+    "create_path": false,
     "num_repeaters": $NUM_REPEATERS,
     "distance": 10000000.0,
     "rate": 100.0,

@@ -71,11 +71,20 @@ impl MiniSync {
         );
 
         // maximum time needed for classical signaling
-        let max_signalling_time =
-            crate::utils::distance_to_latency(params.num_repeaters as f64 * params.distance);
+        let max_signalling_time = crate::utils::distance_to_latency(
+            (1 + 2 * params.num_repeaters) as f64 * params.distance,
+        );
 
-        let time_slot_duration = local_entanglement_threshold + max_signalling_time;
-        log::debug!("prob_local_entanglement = {}, local_entanglement_threshold = {}, max_signalling_time = {}, time_slot_duration = {}",prob_local_entanglement, local_entanglement_threshold,max_signalling_time,time_slot_duration);
+        // time to create the path, if specified
+        let path_creation_latency = if params.create_path {
+            crate::utils::distance_to_latency(params.num_repeaters as f64 * params.distance)
+        } else {
+            0.0
+        };
+
+        let time_slot_duration =
+            local_entanglement_threshold + max_signalling_time + path_creation_latency;
+        log::debug!("prob_local_entanglement = {}, local_entanglement_threshold = {}, max_signalling_time = {}, path_creation_latency = {}, time_slot_duration = {}",prob_local_entanglement, local_entanglement_threshold,max_signalling_time,path_creation_latency,time_slot_duration);
 
         Self {
             time_slot_duration,
@@ -276,27 +285,29 @@ impl MiniSync {
                 epr_pairs[bsm_candidate.right].epr_pair_id,
                 bsm_candidate.repeater as u32 + 1,
             );
-            for end_node in end_nodes {
-                let latency = latencies.get_mut(&end_node).unwrap();
-                let num_hops = if end_node == alice_id {
-                    bsm_candidate.repeater + 1
-                } else {
-                    n - bsm_candidate.repeater
-                };
-                let new_latency = crate::utils::distance_to_latency(
-                    num_hops as f64 * self.mini_config.mini_parameters.distance,
-                ) + self.mini_config.mini_parameters.swapping_duration
-                    + self.mini_config.mini_parameters.correction_duration;
-                if new_latency > *latency {
-                    *latency = new_latency;
-                }
+
+            // All the corrections from the repeaters go (arbitrarily) to Bob.
+            let latency = latencies.get_mut(&bob_id).unwrap();
+            let num_hops = n - bsm_candidate.repeater;
+            let new_latency = crate::utils::distance_to_latency(
+                num_hops as f64 * self.mini_config.mini_parameters.distance,
+            ) + self.mini_config.mini_parameters.swapping_duration
+                + self.mini_config.mini_parameters.correction_duration;
+            if new_latency > *latency {
+                *latency = new_latency;
             }
+
             last_es = last_es.max(bsm_candidate.es_time);
 
             epr_pairs[bsm_candidate.left].epr_pair_id = epr_pair_id_new;
             epr_pairs[bsm_candidate.right].epr_pair_id = epr_pair_id_new;
             last_epr_pair_id = Some(epr_pair_id_new);
         }
+        let bob_latency = latencies[&bob_id];
+        *latencies.get_mut(&alice_id).unwrap() = bob_latency
+            + crate::utils::distance_to_latency(
+                (n as f64 + 1.0) * self.mini_config.mini_parameters.distance,
+            );
 
         let last_epr_pair_id = last_epr_pair_id.unwrap();
         let mut fidelities = vec![];
