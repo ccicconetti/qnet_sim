@@ -162,12 +162,23 @@ impl Node {
     /// - `peer_node_id`: the identifier of the peer node
     /// - `role`: the role of this node in the logical link
     /// - `num_qubits`: how many quantum memory cells there will be
+    /// - `memory_persistence`: the minimum time a memory cell remains in
+    /// a valid state before it can be overwritten (if unused)
     ///
     /// Return true if `peer_node_id` was already present with same role for
     /// this node.
-    pub fn add_nic(&mut self, peer_node_id: u32, role: super::nic::Role, num_qubits: u32) -> bool {
+    pub fn add_nic(
+        &mut self,
+        peer_node_id: u32,
+        role: super::nic::Role,
+        num_qubits: u32,
+        memory_persistence: f64,
+    ) -> bool {
         self.nics(&role)
-            .insert(peer_node_id, super::nic::Nic::new(role, num_qubits))
+            .insert(
+                peer_node_id,
+                super::nic::Nic::new(role, num_qubits, memory_persistence),
+            )
             .is_none()
     }
 
@@ -660,6 +671,8 @@ impl Node {
                         vec![epr.source_node_id.to_string(), epr.source_port.to_string()],
                         app_request.tries as f64,
                     ),
+                    Sample::ScalarAvg("ebit_prob".to_string(), 1.0),
+                    Sample::ScalarCount("ebit_tot".to_string()),
                 ],
             )
         } else {
@@ -709,8 +722,10 @@ impl Node {
             (app_request.epr.clone(), app_request.path.clone())
         };
 
-        let (mut new_events, samples) = self.handle_epr_request_app_inner(epr, path);
+        let (mut new_events, mut samples) = self.handle_epr_request_app_inner(epr, path);
         events.append(&mut new_events);
+
+        samples.push(Sample::ScalarAvg("ebit_prob".to_string(), 0.0));
 
         (events, samples)
     }

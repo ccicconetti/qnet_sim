@@ -374,6 +374,35 @@ impl crate::utils::CsvFriend for Applications {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct NetworkConfig {
+    /// When a local EPR pair reaches a NIC, it is absorbed only if there is
+    /// a feasible memory cell to keep it. A memory cell can be used if it:
+    /// - empty, or
+    /// - with a valid qubit but unused and no newer than a persistence time.
+    /// The latter is equal to the latency from the master to the slave
+    /// multiplied by this factor, which can be even 0.
+    pub memory_persistence_factor: f64,
+}
+
+impl Default for NetworkConfig {
+    fn default() -> Self {
+        Self {
+            memory_persistence_factor: 0.0,
+        }
+    }
+}
+
+impl crate::utils::CsvFriend for NetworkConfig {
+    fn header(&self) -> String {
+        crate::utils::struct_to_csv_header(self).unwrap()
+    }
+
+    fn to_csv(&self) -> String {
+        crate::utils::struct_to_csv(self).unwrap()
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct FullConfig {
     /// The duration of the simulation, in s.
     pub duration: f64,
@@ -393,6 +422,8 @@ pub struct FullConfig {
     pub logical_topology: LogicalTopology,
     /// The applications.
     pub applications: Applications,
+    /// The network configuration.
+    pub network: NetworkConfig,
 }
 
 pub enum UserConfigRecipe {
@@ -438,6 +469,7 @@ impl FullConfig {
             },
             logical_topology: LogicalTopology::default(),
             applications: Applications::default(),
+            network: NetworkConfig::default(),
         }
     }
 }

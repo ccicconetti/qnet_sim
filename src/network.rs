@@ -66,11 +66,12 @@ pub struct Network {
 impl Network {
     /// Create a network from the logical topology.
     pub fn new(
-        physical_topology: crate::physical_topology::PhysicalTopology,
+        mut physical_topology: crate::physical_topology::PhysicalTopology,
         fidelity_computer: Box<dyn crate::physical_topology::FidelityComputer>,
         rate_computer: Box<dyn crate::physical_topology::RateComputer>,
         logical_topology: std::rc::Rc<crate::logical_topology::LogicalTopology>,
         init_seed: u64,
+        network_config: &crate::full_config::NetworkConfig,
     ) -> Self {
         // Create the nodes.
         let mut nodes = vec![];
@@ -106,11 +107,21 @@ impl Network {
                 slave_node_id as u32,
                 super::nic::Role::Master,
                 num_qubits,
+                crate::utils::distance_to_latency(
+                    physical_topology
+                        .distance(master_node_id as u32, slave_node_id as u32)
+                        .unwrap(),
+                ) * network_config.memory_persistence_factor,
             );
             nodes[slave_node_id].add_nic(
                 master_node_id as u32,
                 super::nic::Role::Slave,
                 num_qubits,
+                crate::utils::distance_to_latency(
+                    physical_topology
+                        .distance(master_node_id as u32, slave_node_id as u32)
+                        .unwrap(),
+                ) * network_config.memory_persistence_factor,
             );
 
             let master_node_id = master_node_id as u32;
@@ -418,6 +429,7 @@ mod tests {
             Box::new(crate::physical_topology::FixedRate::default()),
             std::rc::Rc::new(logical_topology),
             42,
+            &crate::full_config::NetworkConfig::default(),
         );
         assert_eq!(10, network.nodes.len());
     }

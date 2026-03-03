@@ -158,6 +158,9 @@ mod tests {
                 source_dest_pairs: SourceDestPairs::List(vec![(0, 1)]),
                 max_requests: 100,
             }),
+            network: NetworkConfig {
+                memory_persistence_factor: 1.0,
+            },
         };
         (Config { seed }, full_config)
     }
@@ -303,6 +306,9 @@ mod tests {
                 source_dest_pairs: SourceDestPairs::AllToAll,
                 max_requests: 1,
             }),
+            network: NetworkConfig {
+                memory_persistence_factor: 1.0,
+            },
         };
         (Config { seed }, full_config)
     }

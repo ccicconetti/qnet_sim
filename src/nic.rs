@@ -164,6 +164,8 @@ pub struct Nic {
     role: Role,
     /// Quantum memory cells assigned to this NIC.
     memory_cells: Vec<MemoryCell>,
+    /// Memory persistence, in ns.
+    memory_persistence: u64,
 }
 
 impl std::fmt::Display for Nic {
@@ -183,12 +185,23 @@ impl std::fmt::Display for Nic {
 
 impl Nic {
     /// Create a NIC with a given role and number of quantum memory cells.
-    pub fn new(role: Role, num_qubits: u32) -> Self {
+    /// Parameters:
+    /// - `role`: master or slave
+    /// - `num_qubits`: number of qubits
+    /// - `memory_persistence`: the minimum time a memory cell remains in
+    /// a valid state before it can be overwritten (if unused)
+    pub fn new(role: Role, num_qubits: u32, memory_persistence: f64) -> Self {
         let mut memory_cells = vec![];
         for _ in 0..num_qubits {
             memory_cells.push(MemoryCell::Empty);
         }
-        Self { role, memory_cells }
+        let memory_persistence = crate::utils::to_nanoseconds(memory_persistence);
+        log::info!("XXX {:?} {} {}", role, num_qubits, memory_persistence);
+        Self {
+            role,
+            memory_cells,
+            memory_persistence,
+        }
     }
 
     /// Add a fresh EPR pair to an empty memory cell or, if not available,
@@ -198,7 +211,7 @@ impl Nic {
     ///
     /// Return the identifier of the EPR pair to be freed:
     /// - the new EPR, if all the cells are busy;
-    /// - the oldest EPR, is there is a non-busy cell;
+    /// - the oldest EPR, if there is an unused cell;
     /// - none, if the EPR there was an empty cell.
     pub fn add_epr_pair(&mut self, now: u64, epr_pair_id: u64) -> Option<u64> {
         let first_empty = self
@@ -212,9 +225,16 @@ impl Nic {
             self.memory_cells[index] = MemoryCell::new(now, epr_pair_id);
             None
         } else if let Some(index) = self.oldest_valid() {
-            let overwritten_id = self.memory_cells[index].epr_pair_id().unwrap();
-            self.memory_cells[index] = MemoryCell::new(now, epr_pair_id);
-            Some(overwritten_id)
+            assert!(now >= self.memory_cells[index].data().unwrap().created);
+            if (now - self.memory_cells[index].data().unwrap().created) < self.memory_persistence {
+                // There is a valid unused memory cell, but it's too early
+                // to recycle it.
+                Some(epr_pair_id)
+            } else {
+                let overwritten_id = self.memory_cells[index].epr_pair_id().unwrap();
+                self.memory_cells[index] = MemoryCell::new(now, epr_pair_id);
+                Some(overwritten_id)
+            }
         } else {
             Some(epr_pair_id)
         }
@@ -306,7 +326,7 @@ mod tests {
 
     #[test]
     fn test_nic_add_consume_epr_pairs() {
-        let mut nic = Nic::new(Role::Master, 10);
+        let mut nic = Nic::new(Role::Master, 10, 0.0);
 
         for cell in &nic.memory_cells {
             assert!(cell.is_empty());
@@ -369,7 +389,7 @@ mod tests {
 
     #[test]
     fn test_nic_use_consume_epr_pairs() {
-        let mut nic = Nic::new(Role::Master, 10);
+        let mut nic = Nic::new(Role::Master, 10, 0.0);
 
         // Make sure all the cells are empty.
         for cell in &nic.memory_cells {

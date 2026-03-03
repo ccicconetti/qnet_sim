@@ -103,6 +103,7 @@ impl Simulation {
             rate_computer,
             std::rc::Rc::new(logical_topology),
             config.seed,
+            &full_config.network,
         )
     }
 
@@ -128,6 +129,24 @@ impl Simulation {
         // Create data structure for scalar values.
         let mut single = crate::output::OutputScalar::default();
         single.init("bsm_prob", crate::output::ScalarMetricType::Avg, crate::output::MetricMetadata::new("probability", "Probability of a successful Bell State Measurement performed during an Entanglement Swapping operation", false));
+        single.init(
+            "ebit_prob",
+            crate::output::ScalarMetricType::Avg,
+            crate::output::MetricMetadata::new(
+                "probability",
+                "Probability that an end-to-end entanglement is established",
+                false,
+            ),
+        );
+        single.init(
+            "ebit_tot",
+            crate::output::ScalarMetricType::Count,
+            crate::output::MetricMetadata::new(
+                "ebits",
+                "Number of successful end-to-end entanglements",
+                false,
+            ),
+        );
         single.init(
             "bsm_tot",
             crate::output::ScalarMetricType::Count,
