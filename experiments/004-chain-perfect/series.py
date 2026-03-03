@@ -21,23 +21,27 @@ metrics = {
     "app-net-latency": {
         "label": "End-to-end network latency (s)",
         "aggregates": ["mean"],
+        "ylim": [0, 1],
     },
-    "fidelity": {"label": "Fidelity", "aggregates": ["mean", "p95"]},
-    "ping-latency": {"label": "Ping latency (s)", "aggregates": ["mean", "count"]},
-    "occupancy": {"label": "NIC occupancy", "aggregates": ["mean"]},
+    "fidelity": {"label": "Fidelity", "aggregates": ["mean"]},
+    # "ping-latency": {"label": "Ping latency (s)", "aggregates": ["mean", "count"]},
+    # "occupancy": {"label": "NIC occupancy", "aggregates": ["mean"]},
 }
 
 ylog_metrics = {}
 
-primary = "num_pairs"
-primary_label = "Number of applications"
-secondaries = {}
+primary = "memory_qubits"
+primary_label = "Num qubits"
+secondaries = {"num_pairs": "Num applications = "}
 
 aggregate_labels = {"mean": "Average", "p95": "95th percentile", "count": "Count"}
 
 for metric, metric_data in metrics.items():
     df = pd.read_csv(f"{DATA_DIR}/{metric}-stats.csv")
+    df["memory_qubits"] /= 2
+
     ylabel = metric_data["label"]
+    ylim = metric_data["ylim"] if "ylim" in metric_data else None
 
     hue = None
     if secondaries:
@@ -45,30 +49,6 @@ for metric, metric_data in metrics.items():
             df[secondary] = label + df[secondary].astype("str")
         df["hue"] = df[secondaries.keys()].agg("-".join, axis=1)
         hue = "hue"
-
-    # if metric == "app-net-latency":
-    #     df["rate"] = df["count"] / df["duration"]
-    #     grouped = df.groupby(by=["seed", "snapshot", primary]).sum()["rate"]
-    #     df_new = grouped.reset_index()
-    #     df_new["tpt"] = df_new["rate"]
-    #     fig, ax = plt.subplots()
-    #     sns.boxplot(
-    #         df_new,
-    #         x=primary,
-    #         y="tpt",
-    #         hue=hue,
-    #         ax=ax,
-    #     )
-    #     ax.grid(visible=True)
-    #     ax.set_ylabel(f"App throughput (messages/s)")
-    #     ax.set_xlabel(primary_label)
-    #     legend = ax.get_legend()
-    #     if legend:
-    #         legend.set_title(title="")
-    #     # ax.set_ylim(bottom=0.01, top=10)
-    #     # plt.xticks(rotation=45)
-    #     fig.suptitle(f"")
-    #     plt.savefig(f"{RELATIVE_OUT_DIR}/{basename}-series-app-througput.{IMAGE_TYPE}")
 
     if metric == "occupancy":
         fig, ax = plt.subplots()
@@ -93,20 +73,15 @@ for metric, metric_data in metrics.items():
     for aggregate in metric_data["aggregates"]:
         aggregate_label = aggregate_labels[aggregate]
         fig, ax = plt.subplots()
-        sns.boxplot(
-            df,
-            x=primary,
-            y=aggregate,
-            hue=hue,
-            ax=ax,
-        )
+        sns.boxplot(df, x=primary, y=aggregate, hue=hue, ax=ax)
         ax.grid(visible=True)
         ax.set_ylabel(f"{ylabel} - {aggregate_label}")
         ax.set_xlabel(primary_label)
         legend = ax.get_legend()
         if legend:
             legend.set_title(title="")
-        # ax.set_ylim(bottom=0.01, top=10)
+        if ylim is not None:
+            ax.set_ylim(bottom=ylim[0], top=ylim[1])
         if metric in ylog_metrics:
             ax.set_yscale("log")
         # plt.xticks(rotation=45)

@@ -18,21 +18,23 @@ pd.set_option("display.max_columns", None)
 pd.set_option("display.max_colwidth", None)
 df = pd.read_csv(f"{DATA_DIR}/scalar.csv")
 
-df["logical_topology_rel_size"] = (
-    df["logical_topology_num_edges"] / df["logical_topology_possible_edges"]
-)
+df["throughput"] = df["ebit_tot"] / df["duration"]
 
 metrics = {
+    "ebit_prob": "ES success rate",
     "bsm_tot": "ES operations",
+    "throughput": "Throughput (ebit/s)",
     "epr_frees": "EPR free operations",
     "local_epr_misses": "Local EPR misses",
 }
 
 ylog_metrics = {"epr_register_final_len", "epr_frees"}
 
-primary = "num_pairs"
-primary_label = "Number of applications"
-secondaries = {}
+df["memory_qubits"] /= 2
+
+primary = "memory_qubits"
+primary_label = "Num qubits"
+secondaries = {"num_pairs": "Num applications = "}
 
 hue = None
 if secondaries:
@@ -43,12 +45,16 @@ if secondaries:
 
 for metric, ylabel in metrics.items():
     fig, ax = plt.subplots()
-    sns.boxplot(
+    sns.lineplot(
         df,
         x=primary,
         y=metric,
         hue=hue,
+        style=hue,
         ax=ax,
+        errorbar=("ci", 95),
+        markers=True,
+        dashes=False,
     )
     ax.grid(visible=True)
     ax.set_ylabel(ylabel)

@@ -36,42 +36,42 @@ if [ "$SEED_END" == "" ] ; then
 fi
 
 num_repeaters_v="7"
-num_pairs_v="5 10 15 20 25 30 35 40 45 50"
-num_pairs_v="5 10 20"
+num_pairs_v="1 2 5 10 20 30 40 50"
+memory_qubits_v="10 20 40 60 80 100 200 300"
 
 #
 # Execute experiments
 #
 
-if [[ "$DRY" == "" &&  -d "data" && ! -z "$( ls -A 'data/' )" ]] ; then
-    read -p "directory 'data' exists and is non-empty: do you want to remove the content? [Y/N]: " confirm && [[ $confirm == [yY] || $confirm == [yY][eE][sS] ]] || exit 1
-    rm -rf data/* 2> /dev/null
+if [ "$OVERRIDE" == "" ] ; then
+    if [[ "$DRY" == "" &&  -d "data" && ! -z "$( ls -A 'data/' )" ]] ; then
+        read -p "directory 'data' exists and is non-empty: do you want to remove the content? [Y/N]: " confirm && [[ $confirm == [yY] || $confirm == [yY][eE][sS] ]] || exit 1
+        rm -rf data/* 2> /dev/null
+    fi
 fi
 
 rm conf.json 2> /dev/null
 
 for NUM_REPEATERS in $num_repeaters_v ; do
+for MEMORY_QUBITS in $memory_qubits_v ; do
 for num_pairs in $num_pairs_v ; do
 
-    echo "# num_repeaters $NUM_REPEATERS, num_pairs $num_pairs"
+    echo "# num_repeaters $NUM_REPEATERS, memory_qubits $MEMORY_QUBITS, num_pairs $num_pairs,"
+
+    OGS_MEMORY_QUBITS=$(( MEMORY_QUBITS / 2 ))
 
     PAIRS="[0,1]"
     for (( i = 1 ; i < $num_pairs ; i++ )) ; do
-        if [ $(( i % 2)) -eq 0 ] ; then
-            PAIRS="$PAIRS,[0,1]"
-        else
-            PAIRS="$PAIRS,[1,0]"
-        fi
+        PAIRS="$PAIRS,[0,1]"
     done
 
-    export DURATION NUM_REPEATERS PAIRS
+    export DURATION NUM_REPEATERS PAIRS MEMORY_QUBITS OGS_MEMORY_QUBITS
     envsubst < conf.json.template > conf.json
 
     cmd="./qnet_ll_sim --append \
-        --additional-fields $num_pairs,$NUM_REPEATERS \
-        --additional-header num_pairs,num_repeaters \
+        --additional-fields $num_pairs,$NUM_REPEATERS,$MEMORY_QUBITS,$DURATION \
+        --additional-header num_pairs,num_repeaters,memory_qubits,duration \
         --seed-init $SEED_INIT --seed-end $SEED_END"
-
 
     if [ "$DRY" != "" ] ; then
         echo $cmd
@@ -79,6 +79,7 @@ for num_pairs in $num_pairs_v ; do
         eval $cmd
     fi
 
+done
 done
 done
 

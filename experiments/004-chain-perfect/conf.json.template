@@ -17,7 +17,7 @@
         "label": null,
         "node_type": "SAT",
         "is_repeater": true,
-        "memory_qubits": 10,
+        "memory_qubits": $MEMORY_QUBITS,
         "decay_rate": 1.0,
         "swapping_success_prob": 0.95,
         "swapping_duration": 0.001,
@@ -29,7 +29,7 @@
         "label": null,
         "node_type": "OGS",
         "is_repeater": false,
-        "memory_qubits": 10,
+        "memory_qubits": $OGS_MEMORY_QUBITS,
         "decay_rate": 1.0,
         "swapping_success_prob": 0.0,
         "swapping_duration": 0.0,
@@ -65,5 +65,8 @@
       },
       "max_requests": 0
     }
+  },
+  "network": {
+    "memory_persistence_factor": 0.0
   }
 }
