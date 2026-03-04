@@ -20,6 +20,8 @@ pub struct MiniSync {
     mini_config: crate::mini_config::MiniConfig,
     /// EPR register.
     pub epr_register: crate::epr_register::EprRegister,
+    /// Consecutive time slots without a successful ebit.
+    pub consecutive_failed_time_slots: usize,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -96,6 +98,7 @@ impl MiniSync {
             rng: rand::rngs::StdRng::seed_from_u64(config.seed),
             mini_config,
             epr_register: Default::default(),
+            consecutive_failed_time_slots: 0,
         }
     }
 
@@ -171,12 +174,20 @@ impl MiniSync {
         single.init(
             "fidelity",
             crate::output::ScalarMetricType::Avg,
-            crate::output::MetricMetadata::new("[0,1]", "End-to-end fidelity", false),
+            crate::output::MetricMetadata::new(
+                "[0,1]",
+                "End-to-end fidelity of successful ebits",
+                false,
+            ),
         );
         single.init(
             "latency",
             crate::output::ScalarMetricType::Avg,
-            crate::output::MetricMetadata::new("s", "End-to-end latency", false),
+            crate::output::MetricMetadata::new(
+                "s",
+                "End-to-end latency of successful ebits",
+                false,
+            ),
         );
 
         let mut series = crate::output::OutputSeries::new(series_ignore);
@@ -264,6 +275,7 @@ impl MiniSync {
             }
             samples.push(Sample::ScalarAvg("ebit_prob".to_string(), 0.0));
             log::debug!("new time slot: end-to-end entanglement failed");
+            self.consecutive_failed_time_slots += 1;
             return samples;
         }
 
@@ -349,13 +361,15 @@ impl MiniSync {
             samples.push(Sample::ScalarAvg("fidelity".to_string(), fidelities[id]));
         }
         for (node_id, latency) in &latencies {
+            let latency =
+                *latency + self.time_slot_duration * self.consecutive_failed_time_slots as f64;
             let id = if *node_id == alice_id { 0 } else { 1 };
             samples.push(Sample::Series(
                 "latency".to_string(),
                 vec![id.to_string()],
-                *latency,
+                latency,
             ));
-            samples.push(Sample::ScalarAvg("latency".to_string(), *latency));
+            samples.push(Sample::ScalarAvg("latency".to_string(), latency));
         }
 
         log::debug!(
@@ -363,6 +377,7 @@ impl MiniSync {
             latencies.values(),
             fidelities
         );
+        self.consecutive_failed_time_slots = 0;
 
         samples
     }
