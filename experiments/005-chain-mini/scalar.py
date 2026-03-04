@@ -21,10 +21,12 @@ df = pd.read_csv(f"{DATA_DIR}/scalar.csv")
 df["throughput"] = df["ebit_tot"] / (df["duration"] - df["warmup_period"])
 df["throughput"] *= df["num_qubits"]
 df["time_slot_duration"] = 1000.0 * df["time_slot_duration"]
+df["latency"] *= 1000.0
 
 metrics = {
     "ebit_prob": "ES success rate",
     "bsm_prob": "ES operations",
+    "fidelity": "Fidelity",
     "throughput": "Throughput (ebit/s)",
     "time_slot_duration": "Time slot duration (ms)",
 }

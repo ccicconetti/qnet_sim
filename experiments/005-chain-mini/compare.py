@@ -22,7 +22,8 @@ df = pd.read_csv(f"{DATA_DIR}/scalar.csv")
 df["throughput"] = df["ebit_tot"] / (df["duration"] - df["warmup_period"])
 df["throughput"] *= df["num_qubits"]
 df["time_slot_duration"] = 1000.0 * df["time_slot_duration"]
-df["latency"] *= 1000.0
+df["latency"] = df["time_slot_duration"]
+df["hue"] = df["create_path"].map({True: "SYNC[Open]", False: "SYNC"})
 
 mean_thr = (
     df.groupby(["num_qubits", "prob_local_complete"], as_index=False)["throughput"]
@@ -42,9 +43,10 @@ df["proto"] = "sync"
 df_other = pd.read_csv(f"{OTHER_DATA_DIR}/scalar.csv")
 df_other["proto"] = "async"
 df_other["num_qubits"] = df_other["memory_qubits"] / 2
-df_other = df_other[df_other["num_pairs"] == df_other["num_pairs"].max()].copy()
+df_other = df_other[(df_other["num_pairs"] == 10) | (df_other["num_pairs"] == 30)]
 df_other["throughput"] = df_other["ebit_tot"] / df_other["duration"]
 df_other["latency"] *= 1000.0
+df_other["hue"] = df_other["num_pairs"].map({10: "HOPPER[10]", 30: "HOPPER[30]"})
 
 metrics = {
     "ebit_prob": "ES success rate",
@@ -59,16 +61,9 @@ ylog_metrics = {}
 
 primary = "num_qubits"
 primary_label = "Num qubits"
-secondaries = {"create_path": "C:"}
 other_metrics = {"ebit_prob", "throughput", "fidelity", "latency"}
 
-hue = None
-if secondaries:
-    for secondary, label in secondaries.items():
-        df[secondary] = label + df[secondary].astype("str")
-    df["hue"] = df[secondaries.keys()].agg("-".join, axis=1)
-    hue = "hue"
-
+hue = "hue"
 for metric, ylabel in metrics.items():
     fig, ax = plt.subplots()
     sns.lineplot(
@@ -79,7 +74,8 @@ for metric, ylabel in metrics.items():
         style=hue,
         ax=ax,
         errorbar=("ci", 95),
-        markers=True,
+        markers={"SYNC[Open]": "o", "SYNC": "s"},
+        palette={"SYNC[Open]": "C0", "SYNC": "C1"},
         dashes=False,
     )
     if metric in other_metrics:
@@ -87,23 +83,28 @@ for metric, ylabel in metrics.items():
             df_other,
             x=primary,
             y=metric,
+            hue=hue,
+            style=hue,
             ax=ax,
             errorbar=("ci", 95),
-            marker="o",
-            label="HOPPER",
+            markers={"HOPPER[10]": "^", "HOPPER[30]": "D"},
+            palette={"HOPPER[10]": "C2", "HOPPER[30]": "C3"},
+            dashes=False,
         )
     plt.tight_layout()
     ax.grid(visible=True)
     ax.set_ylabel(ylabel)
     ax.set_xlabel(primary_label)
     ax.set_xticks(sorted(df["num_qubits"].unique()))
+    if metric == "latency":
+        ax.set_ylim(top=2000, bottom=0)
     legend = ax.get_legend()
     if legend:
         legend.set_title(title="")
     if metric in ylog_metrics:
         ax.set_yscale("log")
     for _, r in df[
-        (df["seed"] == df["seed"].unique()[0]) & (df["create_path"] == "C:True")
+        (df["seed"] == df["seed"].unique()[0]) & (df["hue"] == "SYNC[Open]")
     ].iterrows():
         x = r["num_qubits"]
         y = df[metric][
