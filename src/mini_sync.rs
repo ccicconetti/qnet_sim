@@ -173,7 +173,12 @@ impl MiniSync {
         series.init(
             "fidelity",
             &["node_id"],
-            crate::output::MetricMetadata::new("[0,1]", "Measured fidelity", false),
+            crate::output::MetricMetadata::new("[0,1]", "End-to-end fidelity", false),
+        );
+        series.init(
+            "latency",
+            &["node_id"],
+            crate::output::MetricMetadata::new("s", "End-to-end latency", false),
         );
 
         (single, series)
@@ -312,17 +317,15 @@ impl MiniSync {
         let last_epr_pair_id = last_epr_pair_id.unwrap();
         let mut fidelities = vec![];
         for end_node in end_nodes {
-            let (updated, fidelity) = self
+            let (_updated, fidelity) = self
                 .epr_register
                 .consume(last_epr_pair_id, end_node as u32)
                 .unwrap();
 
-            assert!(updated >= now);
-            let elapsed_since_es = latencies[&end_node] - crate::utils::to_seconds(updated - now);
             let end_fidelity = crate::utils::fidelity_decay(
                 fidelity,
                 self.mini_config.mini_parameters.decay_rate,
-                elapsed_since_es,
+                latencies[&end_node],
             );
             fidelities.push(end_fidelity);
         }
@@ -332,6 +335,14 @@ impl MiniSync {
                 "fidelity".to_string(),
                 vec![id.to_string()],
                 fidelities[id],
+            ));
+        }
+        for (node_id, latency) in &latencies {
+            let id = if *node_id == alice_id { 0 } else { 1 };
+            samples.push(Sample::Series(
+                "latency".to_string(),
+                vec![id.to_string()],
+                *latency,
             ));
         }
 
