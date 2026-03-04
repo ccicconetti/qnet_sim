@@ -666,6 +666,10 @@ impl Node {
                         vec![epr.source_node_id.to_string(), epr.source_port.to_string()],
                         crate::utils::to_seconds(now - app_request.received),
                     ),
+                    Sample::ScalarAvg(
+                        "latency".to_string(),
+                        crate::utils::to_seconds(now - app_request.received),
+                    ),
                     Sample::Series(
                         "app-tries".to_string(),
                         vec![epr.source_node_id.to_string(), epr.source_port.to_string()],

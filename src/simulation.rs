@@ -225,6 +225,20 @@ impl Simulation {
                 true,
             ),
         );
+        single.init(
+            "fidelity",
+            crate::output::ScalarMetricType::Avg,
+            crate::output::MetricMetadata::new("[0,1]", "End-to-end system-wide fidelity", false),
+        );
+        single.init(
+            "latency",
+            crate::output::ScalarMetricType::Avg,
+            crate::output::MetricMetadata::new(
+                "s",
+                "End-to-end system-wide network latency",
+                false,
+            ),
+        );
 
         // Create data structure for time series, also setting the headers
         let mut series = crate::output::OutputSeries::new(full_config.series_ignore.clone());

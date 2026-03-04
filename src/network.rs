@@ -332,14 +332,17 @@ impl Network {
 
         (
             vec![],
-            vec![Sample::Series(
-                "fidelity".to_string(),
-                vec![
-                    data.req_app_node_id.to_string(),
-                    data.req_app_port.to_string(),
-                ],
-                fidelity,
-            )],
+            vec![
+                Sample::Series(
+                    "fidelity".to_string(),
+                    vec![
+                        data.req_app_node_id.to_string(),
+                        data.req_app_port.to_string(),
+                    ],
+                    fidelity,
+                ),
+                Sample::ScalarAvg("fidelity".to_string(), fidelity),
+            ],
         )
     }
 

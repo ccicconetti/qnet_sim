@@ -168,6 +168,16 @@ impl MiniSync {
                 true,
             ),
         );
+        single.init(
+            "fidelity",
+            crate::output::ScalarMetricType::Avg,
+            crate::output::MetricMetadata::new("[0,1]", "End-to-end fidelity", false),
+        );
+        single.init(
+            "latency",
+            crate::output::ScalarMetricType::Avg,
+            crate::output::MetricMetadata::new("s", "End-to-end latency", false),
+        );
 
         let mut series = crate::output::OutputSeries::new(series_ignore);
         series.init(
@@ -336,6 +346,7 @@ impl MiniSync {
                 vec![id.to_string()],
                 fidelities[id],
             ));
+            samples.push(Sample::ScalarAvg("fidelity".to_string(), fidelities[id]));
         }
         for (node_id, latency) in &latencies {
             let id = if *node_id == alice_id { 0 } else { 1 };
@@ -344,6 +355,7 @@ impl MiniSync {
                 vec![id.to_string()],
                 *latency,
             ));
+            samples.push(Sample::ScalarAvg("latency".to_string(), *latency));
         }
 
         log::debug!(
