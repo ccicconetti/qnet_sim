@@ -6,13 +6,13 @@
   "mini_parameters": {
     "protocol": {
       "Sync": {
-        "prob_local_complete": 0.95
+        "prob_local_complete": $PROB_LOCAL_COMPLETE
       }
     },
-    "create_path": false,
+    "create_path": $CREATE_PATH,
     "num_repeaters": $NUM_REPEATERS,
     "distance": 10000000.0,
-    "rate": 100.0,
+    "rate": $RATE,
     "fidelity_init": 0.95,
     "decay_rate": 1.0,
     "swapping_success_prob": 0.95,

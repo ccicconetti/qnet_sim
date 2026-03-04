@@ -26,7 +26,7 @@ done
 #
 
 if [ "$DURATION" == "" ] ; then
-    DURATION=60
+    DURATION=300
 fi
 if [ "$SEED_INIT" == "" ] ; then
     SEED_INIT=0
@@ -35,31 +35,42 @@ if [ "$SEED_END" == "" ] ; then
     SEED_END=10
 fi
 
-num_repeaters_v="1 3 5 7"
+num_repeaters_v="3"
+num_qubits_v="1 5 10 20 50 100"
+prob_local_complete_v="0.5 0.6 0.7 0.8 0.9 0.95 0.98 0.99 0.999"
+create_path_v="true false"
 
 #
 # Execute experiments
 #
 
-if [[ "$DRY" == "" &&  -d "data" && ! -z "$( ls -A 'data/' )" ]] ; then
-    read -p "directory 'data' exists and is non-empty: do you want to remove the content? [Y/N]: " confirm && [[ $confirm == [yY] || $confirm == [yY][eE][sS] ]] || exit 1
-    rm -rf data/* 2> /dev/null
+if [ "$OVERRIDE" == "" ] ; then
+    if [[ "$DRY" == "" &&  -d "data" && ! -z "$( ls -A 'data/' )" ]] ; then
+        read -p "directory 'data' exists and is non-empty: do you want to remove the content? [Y/N]: " confirm && [[ $confirm == [yY] || $confirm == [yY][eE][sS] ]] || exit 1
+        rm -rf data/* 2> /dev/null
+    fi
 fi
 
 rm conf.json 2> /dev/null
 
+for num_qubits in $num_qubits_v ; do
 for NUM_REPEATERS in $num_repeaters_v ; do
+for PROB_LOCAL_COMPLETE in $prob_local_complete_v ; do
+for CREATE_PATH in $create_path_v ; do
 
-    echo "# num_repeaters $NUM_REPEATERS"
+    echo "# num_repeaters $NUM_REPEATERS, prob_local_complete $PROB_LOCAL_COMPLETE, create_path $CREATE_PATH"
 
-    export DURATION NUM_REPEATERS
+    RATE=$(bc -l <<< "100 / $NUM_QUBITS")
+
+    export DURATION NUM_REPEATERS PROB_LOCAL_COMPLETE CREATE_PATH RATE
     envsubst < conf.json.template > conf.json
 
     cmd="./qnet_ll_sim --mini \
         --save-config \
         --append \
+        --additional-fields $PROB_LOCAL_COMPLETE,$CREATE_PATH,$num_qubits \
+        --additional-header prob_local_complete,create_path,num_qubits \
         --seed-init $SEED_INIT --seed-end $SEED_END"
-
 
     if [ "$DRY" != "" ] ; then
         echo $cmd
@@ -67,6 +78,9 @@ for NUM_REPEATERS in $num_repeaters_v ; do
         eval $cmd
     fi
 
+done
+done
+done
 done
 
 rm conf.json 2> /dev/null

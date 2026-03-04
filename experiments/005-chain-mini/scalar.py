@@ -19,6 +19,7 @@ pd.set_option("display.max_colwidth", None)
 df = pd.read_csv(f"{DATA_DIR}/scalar.csv")
 
 df["throughput"] = df["ebit_tot"] / (df["duration"] - df["warmup_period"])
+df["throughput"] *= df["num_qubits"]
 df["time_slot_duration"] = 1000.0 * df["time_slot_duration"]
 
 metrics = {
@@ -30,9 +31,9 @@ metrics = {
 
 ylog_metrics = {}
 
-primary = "num_repeaters"
-primary_label = "Number of repeaters"
-secondaries = {}
+primary = "prob_local_complete"
+primary_label = "Prob. local complete"
+secondaries = {"create_path": "C:", "num_qubits": "Q:"}
 
 hue = None
 if secondaries:
@@ -43,12 +44,16 @@ if secondaries:
 
 for metric, ylabel in metrics.items():
     fig, ax = plt.subplots()
-    sns.boxplot(
+    sns.lineplot(
         df,
         x=primary,
         y=metric,
         hue=hue,
+        style=hue,
         ax=ax,
+        errorbar=("ci", 95),
+        markers=True,
+        dashes=False,
     )
     ax.grid(visible=True)
     ax.set_ylabel(ylabel)
@@ -56,9 +61,10 @@ for metric, ylabel in metrics.items():
     legend = ax.get_legend()
     if legend:
         legend.set_title(title="")
-    # ax.set_ylim(bottom=0.01, top=10)
+        legend.set_loc(loc="center left")
+        legend.set_bbox_to_anchor((1.02, 0.5))
+    plt.tight_layout()
     if metric in ylog_metrics:
         ax.set_yscale("log")
-    # plt.xticks(rotation=45)
     fig.suptitle(f"")
     plt.savefig(f"{RELATIVE_OUT_DIR}/{basename}-scalar-{metric}.{IMAGE_TYPE}")
