@@ -83,4 +83,4 @@ done
 done
 done
 
-# rm conf.json 2> /dev/null
+rm conf.json 2> /dev/null
