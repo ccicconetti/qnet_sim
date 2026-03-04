@@ -19,6 +19,7 @@ pd.set_option("display.max_colwidth", None)
 
 metrics = {
     "fidelity": {"label": "Fidelity", "aggregates": ["mean", "p95", "p05"]},
+    "latency": {"label": "Latency (s)", "aggregates": ["mean", "p95", "p05"]},
 }
 
 ylog_metrics = {}

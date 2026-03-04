@@ -36,7 +36,7 @@ if [ "$SEED_END" == "" ] ; then
 fi
 
 num_repeaters_v="3"
-num_qubits_v="1 5 10 20 50 100"
+num_qubits_v="1 5 10 20 50 100 150"
 prob_local_complete_v="0.5 0.6 0.7 0.8 0.9 0.95 0.98 0.99 0.999"
 create_path_v="true false"
 
@@ -58,9 +58,9 @@ for NUM_REPEATERS in $num_repeaters_v ; do
 for PROB_LOCAL_COMPLETE in $prob_local_complete_v ; do
 for CREATE_PATH in $create_path_v ; do
 
-    echo "# num_repeaters $NUM_REPEATERS, prob_local_complete $PROB_LOCAL_COMPLETE, create_path $CREATE_PATH"
+    RATE=$(echo "scale=6; 100 / $num_qubits" | bc -l | sed 's/^\./0./')
 
-    RATE=$(bc -l <<< "100 / $NUM_QUBITS")
+    echo "# num_repeaters $NUM_REPEATERS, prob_local_complete $PROB_LOCAL_COMPLETE, create_path $CREATE_PATH, rate $RATE"
 
     export DURATION NUM_REPEATERS PROB_LOCAL_COMPLETE CREATE_PATH RATE
     envsubst < conf.json.template > conf.json
@@ -83,4 +83,4 @@ done
 done
 done
 
-rm conf.json 2> /dev/null
+# rm conf.json 2> /dev/null
