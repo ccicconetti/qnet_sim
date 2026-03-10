@@ -7,7 +7,7 @@ import pandas as pd
 from pathlib import Path
 
 DATA_DIR = os.environ.get("DATA_DIR", "data")
-OTHER_DATA_DIR = os.environ.get("OTHER_DATA_DIR", "../004-chain-perfect/data")
+OTHER_DATA_DIR = os.environ.get("OTHER_DATA_DIR", "compare")
 RELATIVE_OUT_DIR = os.environ.get("RELATIVE_OUT_DIR", "plots")
 IMAGE_TYPE = os.environ.get("IMAGE_TYPE", "pdf")
 
