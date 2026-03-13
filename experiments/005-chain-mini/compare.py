@@ -103,22 +103,22 @@ for metric, ylabel in metrics.items():
         legend.set_title(title="")
     if metric in ylog_metrics:
         ax.set_yscale("log")
-    for _, r in df[
-        (df["seed"] == df["seed"].unique()[0]) & (df["hue"] == "SYNC[Open]")
-    ].iterrows():
-        x = r["num_qubits"]
-        y = df[metric][
-            (df["num_qubits"] == r["num_qubits"])
-            & (df["create_path"] == r["create_path"])
-        ].mean()
-        ax.annotate(
-            f"p={r['prob_local_complete']:g}",
-            (x, y),
-            xytext=(0, -14),
-            textcoords="offset points",
-            ha="left",
-            va="top",
-            arrowprops=dict(arrowstyle="-", lw=0.8),
-        )
+    # for _, r in df[
+    #     (df["seed"] == df["seed"].unique()[0]) & (df["hue"] == "SYNC[Open]")
+    # ].iterrows():
+    #     x = r["num_qubits"]
+    #     y = df[metric][
+    #         (df["num_qubits"] == r["num_qubits"])
+    #         & (df["create_path"] == r["create_path"])
+    #     ].mean()
+    #     ax.annotate(
+    #         f"p={r['prob_local_complete']:g}",
+    #         (x, y),
+    #         xytext=(0, -14),
+    #         textcoords="offset points",
+    #         ha="left",
+    #         va="top",
+    #         arrowprops=dict(arrowstyle="-", lw=0.8),
+    #     )
     fig.suptitle(f"")
     plt.savefig(f"{RELATIVE_OUT_DIR}/{basename}-compare-{metric}.{IMAGE_TYPE}")

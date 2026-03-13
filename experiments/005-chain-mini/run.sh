@@ -32,13 +32,13 @@ if [ "$SEED_INIT" == "" ] ; then
     SEED_INIT=0
 fi
 if [ "$SEED_END" == "" ] ; then
-    SEED_END=10
+    SEED_END=100
 fi
 
 num_repeaters_v="3"
-num_qubits_v="1 5 10 20 50 100 150"
+num_qubits_v="5 10 20 50 100 150"
 prob_local_complete_v="0.5 0.6 0.7 0.8 0.9 0.95 0.98 0.99 0.999"
-create_path_v="true false"
+create_path_v="false"
 
 #
 # Execute experiments

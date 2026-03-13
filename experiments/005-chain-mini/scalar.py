@@ -35,7 +35,7 @@ ylog_metrics = {}
 
 primary = "prob_local_complete"
 primary_label = "Prob. local complete"
-secondaries = {"create_path": "C:", "num_qubits": "Q:"}
+secondaries = {"num_qubits": "Q:"}
 
 hue = None
 if secondaries:
