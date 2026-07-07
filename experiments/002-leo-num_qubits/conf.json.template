@@ -75,5 +75,8 @@
       "source_dest_pairs": "AllToAll",
       "max_requests": 0
     }
+  },
+  "network": {
+    "memory_persistence_factor": 0.0
   }
 }
