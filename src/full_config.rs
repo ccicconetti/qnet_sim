@@ -265,6 +265,7 @@ pub enum SourceDestPairs {
     Random(usize),
     AllToAll,
     List(Vec<(u32, u32)>),
+    ListByLabel(Vec<(String, String)>),
 }
 
 impl Default for SourceDestPairs {
@@ -275,7 +276,8 @@ impl Default for SourceDestPairs {
 
 impl SourceDestPairs {
     /// Make source/destination pairs.
-    pub fn make_pairs(&self, end_nodes: Vec<u32>, seed: u64) -> Vec<(u32, u32)> {
+    pub fn make_pairs(&self, physical_topology: &crate::physical_topology::PhysicalTopology, seed: u64) -> Vec<(u32, u32)> {
+        let end_nodes = physical_topology.ogs_indices();
         let mut source_dest_pairs = vec![];
         match self {
             Self::Random(num_applications) => {
@@ -310,6 +312,25 @@ impl SourceDestPairs {
                     assert!(end_nodes.iter().any(|x| x == this_node_id));
                     assert!(end_nodes.iter().any(|x| x == peer_node_id));
                     source_dest_pairs.push((*this_node_id, *peer_node_id));
+                }
+            }
+            Self::ListByLabel(pairs) => {
+                for (this_node_label, peer_node_label) in pairs {
+                    let this_node_id = physical_topology.node_id_by_label(this_node_label).unwrap_or_else(|_| {
+                        panic!(
+                            "node with label {} not found in physical topology",
+                            this_node_label
+                        )
+                    });
+                    let peer_node_id = physical_topology.node_id_by_label(peer_node_label).unwrap_or_else(|_| {
+                        panic!(
+                            "node with label {} not found in physical topology",
+                            peer_node_label
+                        )
+                    });
+                    assert!(end_nodes.iter().any(|x| *x == this_node_id));
+                    assert!(end_nodes.iter().any(|x| *x == peer_node_id));
+                    source_dest_pairs.push((this_node_id, peer_node_id));
                 }
             }
         }

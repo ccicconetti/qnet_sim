@@ -326,6 +326,15 @@ impl Simulation {
                 true,
             ),
         );
+        series.init(
+            "node-id-to-label",
+            &["node_id", "label"],
+            crate::output::MetricMetadata::new(
+                "",
+                "Mapping between the node ID and the node label in the physical topology",
+                true,
+            ),
+        );
 
         // Save physical topology metrics.
         let physical_topology = &network.physical_topology;
@@ -369,6 +378,15 @@ impl Simulation {
                 ],
                 0.0,
                 e.weight().elevation,
+            );
+        }
+        for node_id in physical_topology.graph().node_indices() {
+            let label = physical_topology.node_label(node_id.index() as u32)?;
+            series.add(
+                "node-id-to-label",
+                vec![format!("{}", node_id.index()), label],
+                0.0,
+                0.0,
             );
         }
 
@@ -559,7 +577,7 @@ fn create_applications(
         crate::full_config::Applications::ConfPing(conf_ping) => {
             let max_requests = conf_ping.max_requests;
             for (this_node_id, peer_node_id) in
-                conf_ping.source_dest_pairs.make_pairs(ogs_indices, seed)
+                conf_ping.source_dest_pairs.make_pairs(&network.physical_topology, seed)
             {
                 let this_port = network.nodes[this_node_id as usize].next_port();
                 let peer_port = network.nodes[peer_node_id as usize].next_port();
@@ -589,7 +607,7 @@ fn create_applications(
         crate::full_config::Applications::ConfClientServer(conf_client_server) => {
             for (this_node_id, peer_node_id) in conf_client_server
                 .source_dest_pairs
-                .make_pairs(ogs_indices, seed)
+                .make_pairs(&network.physical_topology, seed)
             {
                 let this_port = network.nodes[this_node_id as usize].next_port();
                 let peer_port = network.nodes[peer_node_id as usize].next_port();

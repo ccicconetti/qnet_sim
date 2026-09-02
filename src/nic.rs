@@ -196,7 +196,6 @@ impl Nic {
             memory_cells.push(MemoryCell::Empty);
         }
         let memory_persistence = crate::utils::to_nanoseconds(memory_persistence);
-        log::info!("XXX {:?} {} {}", role, num_qubits, memory_persistence);
         Self {
             role,
             memory_cells,

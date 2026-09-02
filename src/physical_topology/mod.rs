@@ -252,6 +252,22 @@ impl PhysicalTopology {
         ret
     }
 
+    /// Return the label of a node.
+    pub fn node_label(&self, node: u32) -> anyhow::Result<String> {
+        self.node_valid(node)?;
+        Ok(self.graph.node_weight(node.into()).unwrap().to_string())
+    }
+
+    /// Return the id of a node given its label.
+    pub fn node_id_by_label(&self, label: &str) -> anyhow::Result<u32> {
+        for (ndx, w) in self.graph.node_weights().enumerate() {
+            if w.to_string() == label {
+                return Ok(ndx as u32);
+            }
+        }
+        anyhow::bail!("node with label {} not found in the graph", label)
+    }
+
     /// Check if a node is valid.
     fn node_valid(&self, node: u32) -> anyhow::Result<()> {
         anyhow::ensure!(
