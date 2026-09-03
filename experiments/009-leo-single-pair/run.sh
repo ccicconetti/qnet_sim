@@ -60,8 +60,8 @@ for num_pairs in $num_pairs_v ; do
 
     INPUT_PATH=input/simulation_data_161025/snapshots/activelinks_snap$snapshot.txt
 
-    alice_present=$(grep "\t$alice\t" $INPUT_PATH)
-    bob_present=$(grep "\t$bob\t" $INPUT_PATH)
+    alice_present=$(grep $'\t'$alice$'\t' $INPUT_PATH)
+    bob_present=$(grep $'\t'$bob$'\t' $INPUT_PATH)
     if [ "$alice_present" == "" ] || [ "$bob_present" == "" ] ; then
         echo "skipping snapshot $snapshot because one of the nodes is not present"
         continue
