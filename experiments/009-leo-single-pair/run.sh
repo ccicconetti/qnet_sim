@@ -56,7 +56,6 @@ rm conf.json 2> /dev/null
 for (( snapshot = 0 ; snapshot < 500 ; snapshot++ )); do
 for MEMORY_QUBITS in $memory_qubits_v ; do
 for num_pairs in $num_pairs_v ; do
-    echo "# MEMORY_QUBITS $MEMORY_QUBITS snapshot $snapshot"
 
     INPUT_PATH=input/simulation_data_161025/snapshots/activelinks_snap$snapshot.txt
 
@@ -66,6 +65,8 @@ for num_pairs in $num_pairs_v ; do
         echo "skipping snapshot $snapshot because one of the nodes is not present"
         continue
     fi
+
+    echo "# MEMORY_QUBITS $MEMORY_QUBITS num_pairs $num_pairs snapshot $snapshot"
 
     PAIRS=$pair
     for (( i = 1 ; i < $num_pairs ; i++ )) ; do
