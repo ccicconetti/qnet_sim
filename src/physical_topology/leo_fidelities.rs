@@ -250,11 +250,11 @@ mod tests {
             .open("leo_fidelities.csv")
             .unwrap();
 
-        let h_b_values = [1e2, 1e3, 1e4, 1e5, 1e6];
+        let h_b_values = [10.0, 1e2, 1e3, 1e4, 1e5, 1e6];
         let _ = writeln!(outfile, "elevation_degrees,h_b,distance_km,fidelity");
         for elevation in 1..6 {
             let elevation = elevation * 10;
-            for distance in 1..20 {
+            for distance in 1..60 {
                 let distance = distance * 100;
                 for h_b_value in &h_b_values {
                     let mut fidelities = fidelities.clone();
