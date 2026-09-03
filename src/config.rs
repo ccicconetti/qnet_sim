@@ -11,7 +11,7 @@ pub struct Config {
 
 impl CsvFriend for Config {
     fn header(&self) -> String {
-        format!("seed")
+        "seed".to_string()
     }
     fn to_csv(&self) -> String {
         format!("{}", self.seed)

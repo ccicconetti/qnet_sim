@@ -336,8 +336,8 @@ impl SourceDestPairs {
                                 peer_node_label
                             )
                         });
-                    assert!(end_nodes.iter().any(|x| *x == this_node_id));
-                    assert!(end_nodes.iter().any(|x| *x == peer_node_id));
+                    assert!(end_nodes.contains(&this_node_id));
+                    assert!(end_nodes.contains(&peer_node_id));
                     source_dest_pairs.push((this_node_id, peer_node_id));
                 }
             }

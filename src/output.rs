@@ -474,7 +474,7 @@ pub fn save_outputs(outputs: Vec<Output>, conf: OutputSaveConf) -> anyhow::Resul
         format!(
             "{}{},{}{}",
             additional_header,
-            &conf.config_csv_header,
+            conf.config_csv_header,
             user_config_csv_header,
             outputs.first().unwrap().scalar.header()
         )
@@ -490,7 +490,7 @@ pub fn save_outputs(outputs: Vec<Output>, conf: OutputSaveConf) -> anyhow::Resul
             let header_common = format!(
                 "{}{},{}{}",
                 additional_header,
-                &conf.config_csv_header,
+                conf.config_csv_header,
                 user_config_csv_header,
                 elem.headers.join(",")
             );

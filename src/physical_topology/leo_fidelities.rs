@@ -71,9 +71,9 @@ impl LeoFidelities {
     fn mu(&self, distance: f64, elevation: f64) -> f64 {
         let z_r = std::f64::consts::PI * self.w_0.powf(2.0) / self.lambda;
         let w =
-            self.w_0 * ((1.0 + ((self.m_square * distance / z_r) as f64).powf(2.0)) as f64).sqrt();
+            self.w_0 * (1.0 + (self.m_square * distance / z_r).powf(2.0)).sqrt();
         let chi_est = (-self.beta / (elevation * std::f64::consts::PI / 180.0).cos()).exp();
-        let eta_t = 1.0 - ((-2.0 * self.r_ogs.powf(2.0) / w.powf(2.0)) as f64).exp();
+        let eta_t = 1.0 - (-2.0 * self.r_ogs.powf(2.0) / w.powf(2.0)).exp();
         let eta_g = eta_t * chi_est;
 
         // Number of signal photons per time window that we expect to observe
