@@ -163,7 +163,7 @@ impl Node {
     /// - `role`: the role of this node in the logical link
     /// - `num_qubits`: how many quantum memory cells there will be
     /// - `memory_persistence`: the minimum time a memory cell remains in
-    /// a valid state before it can be overwritten (if unused)
+    ///   a valid state before it can be overwritten (if unused)
     ///
     /// Return true if `peer_node_id` was already present with same role for
     /// this node.

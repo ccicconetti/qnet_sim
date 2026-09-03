@@ -352,13 +352,13 @@ impl MiniSync {
             fidelities.push(end_fidelity);
         }
 
-        for id in 0..fidelities.len() {
+        for (id, fidelity) in fidelities.iter().enumerate() {
             samples.push(Sample::Series(
                 "fidelity".to_string(),
                 vec![id.to_string()],
-                fidelities[id],
+                *fidelity,
             ));
-            samples.push(Sample::ScalarAvg("fidelity".to_string(), fidelities[id]));
+            samples.push(Sample::ScalarAvg("fidelity".to_string(), *fidelity));
         }
         for (node_id, latency) in &latencies {
             let latency =

@@ -408,8 +408,8 @@ pub struct NetworkConfig {
     /// a feasible memory cell to keep it. A memory cell can be used if it:
     /// - empty, or
     /// - with a valid qubit but unused and no newer than a persistence time.
-    /// The latter is equal to the latency from the master to the slave
-    /// multiplied by this factor, which can be even 0.
+    ///   The latter is equal to the latency from the master to the slave
+    ///   multiplied by this factor, which can be even 0.
     pub memory_persistence_factor: f64,
 }
 
@@ -461,8 +461,10 @@ pub enum UserConfigRecipe {
     Leo,
 }
 
-impl UserConfigRecipe {
-    pub fn from_str(recipe: &str) -> anyhow::Result<Self> {
+impl std::str::FromStr for UserConfigRecipe {
+    type Err = anyhow::Error;
+
+    fn from_str(recipe: &str) -> anyhow::Result<Self> {
         Ok(match recipe {
             "grid" => Self::Grid,
             "chain" => Self::Chain,

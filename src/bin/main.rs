@@ -8,6 +8,7 @@ use qnet_ll_sim::mini_config::MiniConfig;
 use qnet_ll_sim::mini_simulation::MiniSimulation;
 use qnet_ll_sim::simulation::Simulation;
 use qnet_ll_sim::utils::CsvFriend;
+use std::str::FromStr;
 
 #[derive(Debug, clap::Parser)]
 #[command(long_about = None)]
@@ -61,7 +62,7 @@ struct Args {
 
 #[derive(Clone)]
 enum SimConfig {
-    Full(FullConfig),
+    Full(Box<FullConfig>),
     Mini(MiniConfig),
 }
 
@@ -150,7 +151,7 @@ async fn main() -> anyhow::Result<()> {
         SimConfig::Mini(mini_config)
     } else {
         let full_config: FullConfig = serde_json::from_reader(reader)?;
-        SimConfig::Full(full_config)
+        SimConfig::Full(Box::new(full_config))
     };
 
     // Create the configurations of all the experiments
@@ -189,7 +190,7 @@ async fn main() -> anyhow::Result<()> {
                 match &sim_config {
                     SimConfig::Full(full_config) => match Simulation::new(
                         config,
-                        full_config.clone(),
+                        *full_config.clone(),
                         args.save_to_dot,
                         args.print_metrics,
                     ) {

@@ -189,7 +189,7 @@ impl Nic {
     /// - `role`: master or slave
     /// - `num_qubits`: number of qubits
     /// - `memory_persistence`: the minimum time a memory cell remains in
-    /// a valid state before it can be overwritten (if unused)
+    ///   a valid state before it can be overwritten (if unused)
     pub fn new(role: Role, num_qubits: u32, memory_persistence: f64) -> Self {
         let mut memory_cells = vec![];
         for _ in 0..num_qubits {
