@@ -164,7 +164,7 @@ impl super::PhysicalTopologyParams for FileParams {
 #[cfg(test)]
 mod tests {
     use super::FileParams;
-    use crate::physical_topology::{NodeWeight, PhysicalTopology};
+    use crate::physical_topology::{self, NodeWeight, PhysicalTopology};
     use std::io::Write;
 
     #[test]
@@ -230,6 +230,73 @@ mod tests {
         assert_float_eq::assert_f64_near!(200000.0, graph.distance(1, 3).unwrap());
         assert_float_eq::assert_f64_near!(300000.0, graph.distance(0, 3).unwrap());
         assert_float_eq::assert_f64_near!(300000.0, graph.distance(2, 3).unwrap());
+
+        Ok(())
+    }
+
+    #[ignore]
+    #[test]
+    fn find_ogs_pairs() -> anyhow::Result<()> {
+        let mut input_paths = std::fs::read_dir(std::env::var("INPUT_DIR")?)?
+            .map(|entry| entry.map(|entry| entry.path()))
+            .collect::<Result<Vec<_>, _>>()?;
+        input_paths.sort();
+
+        let mut physical_topologies: Vec<_> = vec![];
+        for input_path in input_paths {
+            if !input_path.is_file() {
+                continue;
+            }
+
+            println!("{}", input_path.display());
+            let file_params = FileParams {
+                input_type: super::InputType::Leo,
+                input_path: input_path.to_str().unwrap().to_string(),
+            };
+            let physical_topology = physical_topology::PhysicalTopology::new(
+                &file_params,
+                NodeWeight::default_sat(),
+                NodeWeight::default_ogs(),
+                42,
+            )?;
+            physical_topologies.push(physical_topology);
+        }
+
+        let mut ogs_labels_uniq = std::collections::HashSet::new();
+        let mut ogs_labels: Vec<Vec<String>> = vec![];
+        for physical_topology in physical_topologies {
+            let ogs_node_ids = physical_topology.ogs_indices();
+            let ogs_cur_labels = ogs_node_ids
+                .iter()
+                .map(|node_id| {
+                    physical_topology
+                        .node_label(*node_id)
+                        .unwrap_or("unknown".to_string())
+                })
+                .collect::<Vec<String>>();
+            ogs_labels_uniq.extend(ogs_cur_labels.iter().cloned());
+            ogs_labels.push(ogs_cur_labels);
+        }
+
+        let mut counts = std::collections::BTreeMap::new();
+        for alice in &ogs_labels_uniq {
+            for bob in &ogs_labels_uniq {
+                if alice == bob {
+                    continue;
+                }
+                let mut count = 0;
+                for ogs_labels in &ogs_labels {
+                    if ogs_labels.contains(alice) && ogs_labels.contains(bob) {
+                        count += 1;
+                    }
+                }
+                counts.insert(count, format!("{} {}", alice, bob));
+            }
+        }
+
+        for (count, pair) in counts {
+            println!("{}/{}: {}", count, ogs_labels.len(), pair);
+        }
 
         Ok(())
     }
