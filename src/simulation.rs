@@ -576,8 +576,9 @@ fn create_applications(
     match &conf {
         crate::full_config::Applications::ConfPing(conf_ping) => {
             let max_requests = conf_ping.max_requests;
-            for (this_node_id, peer_node_id) in
-                conf_ping.source_dest_pairs.make_pairs(&network.physical_topology, seed)
+            for (this_node_id, peer_node_id) in conf_ping
+                .source_dest_pairs
+                .make_pairs(&network.physical_topology, seed)
             {
                 let this_port = network.nodes[this_node_id as usize].next_port();
                 let peer_port = network.nodes[peer_node_id as usize].next_port();
