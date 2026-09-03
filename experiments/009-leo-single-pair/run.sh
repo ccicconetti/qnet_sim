@@ -54,9 +54,6 @@ fi
 rm conf.json 2> /dev/null
 
 for (( snapshot = 0 ; snapshot < 500 ; snapshot++ )); do
-for MEMORY_QUBITS in $memory_qubits_v ; do
-for num_pairs in $num_pairs_v ; do
-
     INPUT_PATH=input/simulation_data_161025/snapshots/activelinks_snap$snapshot.txt
 
     alice_present=$(grep $'\t'$alice$'\t' $INPUT_PATH)
@@ -66,13 +63,15 @@ for num_pairs in $num_pairs_v ; do
         continue
     fi
 
+for MEMORY_QUBITS in $memory_qubits_v ; do
+for num_pairs in $num_pairs_v ; do
+
     echo "# MEMORY_QUBITS $MEMORY_QUBITS num_pairs $num_pairs snapshot $snapshot"
 
     PAIRS=$pair
     for (( i = 1 ; i < $num_pairs ; i++ )) ; do
         PAIRS="$PAIRS,$pair"
     done
-
 
     export DURATION MEMORY_QUBITS INPUT_PATH PAIRS
     envsubst < conf.json.template > conf.json
