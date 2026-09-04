@@ -30,3 +30,5 @@ docs/.$diagrams.drawio.bkp
 settings.json
 docs/.$diagrams.drawio.dtmp
 input
+
+*.pyc
