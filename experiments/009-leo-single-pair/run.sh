@@ -77,7 +77,6 @@ for num_pairs in $num_pairs_v ; do
     envsubst < conf.json.template > conf.json
 
     cmd="$sim_exec --append \
-        --save-config \
         --additional-fields $alice,$bob,$MEMORY_QUBITS,$num_pairs,$snapshot \
         --additional-header alice,bob,num_qubits,num_pairs,snapshot \
         --seed-init $SEED_INIT --seed-end $SEED_END"
