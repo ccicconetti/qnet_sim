@@ -1,0 +1,105 @@
+{
+  "duration": 3600,
+  "warmup_period": 0.0,
+  "series_ignore": [],
+  "sections_not_serialized": [],
+  "physical_topology": {
+    "File": {
+      "file_params": {
+        "input_type": "Leo",
+        "input_path": "input/simulation_data_161025/snapshots/activelinks_snap0.txt"
+      },
+      "sat_weight": {
+        "label": null,
+        "node_type": "SAT",
+        "is_repeater": true,
+        "memory_qubits": 50,
+        "decay_rate": 1,
+        "swapping_success_prob": 0.95,
+        "swapping_duration": 0.001,
+        "correction_duration": 0.0,
+        "detectors": 20,
+        "transmitters": 20
+      },
+      "ogs_weight": {
+        "label": null,
+        "node_type": "OGS",
+        "is_repeater": false,
+        "memory_qubits": 50,
+        "decay_rate": 1,
+        "swapping_success_prob": 0.0,
+        "swapping_duration": 0.0,
+        "correction_duration": 0.001,
+        "detectors": 10,
+        "transmitters": 0
+      }
+    }
+  },
+  "fidelity_computer": {
+    "LeoFidelities": {
+      "eta_d": 0.9,
+      "f": 20000000.0,
+      "p_s": 0.001,
+      "w_0": 0.25,
+      "r_sat": 1.0,
+      "r_ogs": 1.0,
+      "lambda": 5.8e-7,
+      "m_square": 3.0,
+      "beta": 1.1,
+      "f_0": 0.98,
+      "h_b": 10.0,
+      "omega_fov": 4.0000000000000007e-10,
+      "b_f": 5e-10,
+      "delta_t": 5e-8,
+      "nu": 516883548275862.1
+    }
+  },
+  "rate_computer": {
+    "LeoRates": {
+      "eta_d": 0.9,
+      "f": 20000000.0,
+      "p_s": 0.001,
+      "w_0": 0.25,
+      "r_sat": 1.0,
+      "r_ogs": 1.0,
+      "lambda": 5.8e-7,
+      "m_square": 3.0,
+      "beta": 1.1
+    }
+  },
+  "logical_topology": {
+    "physical_to_logical_policy": "RandomGreedy"
+  },
+  "applications": {
+    "ConfPing": {
+      "source_dest_pairs": {
+        "ListByLabel": [
+          ["ogs#35", "ogs#36"],
+          ["ogs#35", "ogs#36"],
+          ["ogs#35", "ogs#36"],
+          ["ogs#35", "ogs#36"],
+          ["ogs#35", "ogs#36"],
+          ["ogs#35", "ogs#36"],
+          ["ogs#35", "ogs#36"],
+          ["ogs#35", "ogs#36"],
+          ["ogs#35", "ogs#36"],
+          ["ogs#35", "ogs#36"],
+          ["ogs#35", "ogs#36"],
+          ["ogs#35", "ogs#36"],
+          ["ogs#35", "ogs#36"],
+          ["ogs#35", "ogs#36"],
+          ["ogs#35", "ogs#36"],
+          ["ogs#35", "ogs#36"],
+          ["ogs#35", "ogs#36"],
+          ["ogs#35", "ogs#36"],
+          ["ogs#35", "ogs#36"],
+          ["ogs#35", "ogs#36"]
+        ]
+      },
+      "max_requests": 0
+    }
+  },
+  "network": {
+    "memory_persistence_factor": 0.0
+  }
+}
