@@ -1,7 +1,7 @@
 {
   "duration": 3600,
   "warmup_period": 0.0,
-  "series_ignore": [],
+  "series_ignore": ["gen-fidelity", "occupancy"],
   "sections_not_serialized": [],
   "physical_topology": {
     "File": {
