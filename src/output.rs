@@ -291,11 +291,15 @@ impl CsvFriend for OutputScalar {
 pub struct OutputSeriesSingle {
     /// CSV headers, which explains the meaning of the labels.
     pub headers: Vec<String>,
+    /// Unique combinations of labels, indexed by the first element of each sample.
+    pub labels: Vec<Vec<String>>,
+    /// Index of each label combination for reuse when collecting samples.
+    label_indices: std::collections::HashMap<Vec<String>, u64>,
     /// Time series. Each sample is associated with:
-    /// - a vector of string labels
+    /// - an index into `labels`
     /// - the time when the sample was collected
     /// - the value of the sample
-    pub values: Vec<(Vec<String>, f64, f64)>,
+    pub values: Vec<(u64, f64, f64)>,
     /// The metadata of this metric.
     pub metadata: MetricMetadata,
 }
@@ -362,7 +366,15 @@ impl OutputSeries {
                 labels.len()
             );
             if self.enabled || series_single.metadata.always_collect {
-                series_single.values.push((labels, time, value));
+                let label_index = *series_single
+                    .label_indices
+                    .entry(labels)
+                    .or_insert_with_key(|labels| {
+                        let index = series_single.labels.len() as u64;
+                        series_single.labels.push(labels.clone());
+                        index
+                    });
+                series_single.values.push((label_index, time, value));
             }
         }
     }
@@ -383,6 +395,8 @@ impl OutputSeries {
             series_single.headers = headers.iter().map(|x| x.to_string()).collect();
             series_single.metadata = description;
             series_single.values.clear();
+            series_single.labels.clear();
+            series_single.label_indices.clear();
         }
     }
 
@@ -409,13 +423,13 @@ struct StatsSingle {
 }
 
 type StatsContainer =
-    std::collections::HashMap<String, std::collections::HashMap<String, StatsSingle>>;
+    std::collections::HashMap<String, std::collections::HashMap<u64, StatsSingle>>;
 #[derive(Default)]
 struct Stats {
     // hashmap of:
     //   key: metric name
     //   value: hashmap of:
-    //     key: label name
+    //     key: label combination index within the metric
     //     value: statistics
     stats: StatsContainer,
 }
@@ -425,9 +439,12 @@ impl Stats {
         let mut stats: StatsContainer = std::collections::HashMap::new();
         for (metric, series) in &output_series.series {
             stats.insert(metric.clone(), std::collections::HashMap::new());
-            for (label, _timestamp, value) in &series.values {
-                let label = label.join(",");
-                let stats_single = stats.get_mut(metric).unwrap().entry(label).or_default();
+            for (label_index, _timestamp, value) in &series.values {
+                let stats_single = stats
+                    .get_mut(metric)
+                    .unwrap()
+                    .entry(*label_index)
+                    .or_default();
                 stats_single.summary.add(value);
                 stats_single.percentiles.add(value);
             }
@@ -545,14 +562,14 @@ pub fn save_outputs(outputs: Vec<Output>, conf: OutputSaveConf) -> anyhow::Resul
         if conf.save_time_series {
             for (name, elem) in &output.series.series {
                 if let Some(series_file) = series_files.get_mut(name) {
-                    for (labels, time, value) in &elem.values {
+                    for (label_index, time, value) in &elem.values {
                         writeln!(
                             series_file,
                             "{}{},{}{},{},{}",
                             additional_fields,
                             output.config_csv,
                             user_config_csv,
-                            labels.join(","),
+                            elem.labels[*label_index as usize].join(","),
                             time,
                             value
                         )?;
@@ -564,7 +581,7 @@ pub fn save_outputs(outputs: Vec<Output>, conf: OutputSaveConf) -> anyhow::Resul
         let stats_all = Stats::new(&output.series);
         for (name, stats) in &stats_all.stats {
             if let Some(series_stats_file) = series_stats_files.get_mut(name) {
-                for (label, samples) in stats {
+                for (label_index, samples) in stats {
                     let percentiles = samples
                         .percentiles
                         .percentiles([0.05, 0.25, 0.50, 0.75, 0.95])
@@ -576,7 +593,7 @@ pub fn save_outputs(outputs: Vec<Output>, conf: OutputSaveConf) -> anyhow::Resul
                         additional_fields,
                         output.config_csv,
                         user_config_csv,
-                        label,
+                        output.series.series[name].labels[*label_index as usize].join(","),
                         samples.summary.count(),
                         samples.summary.min().unwrap_or_default(),
                         samples.summary.mean().unwrap_or_default(),
@@ -676,6 +693,7 @@ mod tests {
 
         for single in output_series.series.values() {
             assert_eq!(0, single.values.len());
+            assert!(single.labels.is_empty());
         }
 
         output_series.enable();
@@ -700,8 +718,100 @@ mod tests {
 
         for single in output_series.series.values() {
             assert_eq!(10, single.values.len());
+            assert_eq!(1, single.labels.len());
+            assert!(single.values.iter().all(|sample| sample.0 == 0));
         }
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_output_series_label_indices() {
+        let mut series = OutputSeries::default();
+        series.init("metric", &["x", "y"], MetricMetadata::new("", "", true));
+        let ab = vec!["a".to_string(), "b".to_string()];
+        let ba = vec!["b".to_string(), "a".to_string()];
+        series.add("metric", ab.clone(), 1.0, 2.0);
+        series.add("metric", ba.clone(), 3.0, 4.0);
+        series.add("metric", ab.clone(), 5.0, 6.0);
+
+        let single = &series.series["metric"];
+        assert_eq!(single.labels, vec![ab, ba.clone()]);
+        assert_eq!(
+            single.values,
+            vec![(0, 1.0, 2.0), (1, 3.0, 4.0), (0, 5.0, 6.0)]
+        );
+        assert_eq!(single.stats(), (2.0, 4.0, 6.0, 3));
+        let stats = Stats::new(&series);
+        assert_eq!(stats.stats["metric"][&0].summary.count(), 2);
+        assert_eq!(stats.stats["metric"][&0].summary.mean(), Some(4.0));
+        assert_eq!(stats.stats["metric"][&1].summary.count(), 1);
+
+        series.init("metric", &["x", "y"], MetricMetadata::new("", "", true));
+        assert!(series.series["metric"].values.is_empty());
+        assert!(series.series["metric"].labels.is_empty());
+        series.add("metric", ba.clone(), 7.0, 8.0);
+        assert_eq!(series.series["metric"].labels, vec![ba]);
+        assert_eq!(series.series["metric"].values, vec![(0, 7.0, 8.0)]);
+    }
+
+    #[test]
+    fn test_save_outputs_label_indices() -> anyhow::Result<()> {
+        let dir = crate::utils::RemoveMeDir::new("test_save_outputs_label_indices")?;
+        for save_time_series in [false, true] {
+            let output_path = dir.dir().join(save_time_series.to_string());
+            let outputs = [vec!["a", "b", "a"], vec!["b", "a", "b"]]
+                .into_iter()
+                .enumerate()
+                .map(|(run, labels)| {
+                    let mut series = OutputSeries::default();
+                    series.init("metric", &["label"], MetricMetadata::default());
+                    series.enable();
+                    for (time, label) in labels.into_iter().enumerate() {
+                        series.add("metric", vec![label.to_string()], time as f64, 2.0);
+                    }
+                    Output {
+                        scalar: OutputScalar::default(),
+                        series,
+                        config_csv: run.to_string(),
+                        user_config_csv: String::new(),
+                    }
+                })
+                .collect();
+            save_outputs(
+                outputs,
+                OutputSaveConf {
+                    output_path: format!("{}/", output_path.display()),
+                    append: false,
+                    config_csv_header: "run".to_string(),
+                    user_config_csv_header: String::new(),
+                    additional_header: String::new(),
+                    additional_fields: String::new(),
+                    save_config: false,
+                    save_time_series,
+                },
+            )?;
+
+            if save_time_series {
+                assert_eq!(
+                    std::fs::read_to_string(output_path.join("metric.csv"))?,
+                    "run,label,time,value\n0,a,0,2\n0,b,1,2\n0,a,2,2\n1,b,0,2\n1,a,1,2\n1,b,2,2\n"
+                );
+            } else {
+                assert!(!output_path.join("metric.csv").exists());
+            }
+            let stats = std::fs::read_to_string(output_path.join("metric-stats.csv"))?;
+            let mut rows: Vec<_> = stats
+                .lines()
+                .skip(1)
+                .map(|line| line.split(',').take(6).collect::<Vec<_>>().join(","))
+                .collect();
+            rows.sort();
+            assert_eq!(
+                rows,
+                vec!["0,a,2,2,2,2", "0,b,1,2,2,2", "1,a,1,2,2,2", "1,b,2,2,2,2"]
+            );
+        }
         Ok(())
     }
 

@@ -83,7 +83,8 @@ mod tests {
         max: f64,
     ) {
         if let Some(series) = series.get(metric) {
-            for (labels, time, val) in &series.values {
+            for (label_index, time, val) in &series.values {
+                let labels = &series.labels[*label_index as usize];
                 assert!(
                     *val >= min,
                     "metric {metric}, labels {labels:?}, time {time}: val {val} < min {min}"
