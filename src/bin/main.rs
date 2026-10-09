@@ -10,6 +10,12 @@ use qnet_ll_sim::simulation::Simulation;
 use qnet_ll_sim::utils::CsvFriend;
 use std::str::FromStr;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
+enum OutputFormat {
+    Csv,
+    Parquet,
+}
+
 #[derive(Debug, clap::Parser)]
 #[command(long_about = None)]
 struct Args {
@@ -40,16 +46,19 @@ struct Args {
     /// Name of the path where to save the metrics collected.
     #[arg(long, default_value_t = String::from("data/"))]
     output_path: String,
+    /// File format for simulation results.
+    #[arg(long, value_enum, default_value = "csv")]
+    output_format: OutputFormat,
     /// Append to the output file.
     #[arg(long, default_value_t = false)]
     append: bool,
-    /// Additional fields recorded in the CSV output file.
+    /// Additional fields recorded in the output files (comma-separated).
     #[arg(long, default_value_t = String::from(""))]
     additional_fields: String,
-    /// Header of additional fields recorded in the CSV output file.
+    /// Header of additional fields recorded in the output files (comma-separated).
     #[arg(long, default_value_t = String::from(""))]
     additional_header: String,
-    /// Add the configuration values to the CSV output file.
+    /// Add the configuration values to the output files.
     #[arg(long)]
     save_config: bool,
     /// Save the samples of time series.
@@ -218,7 +227,11 @@ async fn main() -> anyhow::Result<()> {
 
     // save output to files
     if !outputs.is_empty() {
-        qnet_ll_sim::output::save_outputs(
+        let save_outputs = match args.output_format {
+            OutputFormat::Csv => qnet_ll_sim::output::save_outputs,
+            OutputFormat::Parquet => qnet_ll_sim::output::save_outputs_parquet,
+        };
+        save_outputs(
             outputs,
             qnet_ll_sim::output::OutputSaveConf {
                 output_path: args.output_path,
@@ -234,4 +247,23 @@ async fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_output_format() {
+        assert_eq!(Args::parse_from(["sim"]).output_format, OutputFormat::Csv);
+        assert_eq!(
+            Args::parse_from(["sim", "--output-format", "parquet"]).output_format,
+            OutputFormat::Parquet
+        );
+        assert_eq!(
+            Args::parse_from(["sim", "--output-format", "csv"]).output_format,
+            OutputFormat::Csv
+        );
+        assert!(Args::try_parse_from(["sim", "--output-format", "unknown"]).is_err());
+    }
 }

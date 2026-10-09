@@ -60,6 +60,29 @@ target/release/qnet_ll_sim
 
 This will produce the simulation results in CSV files in `data`.
 
+To export Apache Parquet files instead, select the output format:
+
+```bash
+target/release/qnet_ll_sim --output-format parquet --save-time-series
+```
+
+CSV remains the default, and can also be selected with `--output-format csv`.
+Parquet export uses the official native Rust `parquet` library with Snappy
+compression. It writes `scalar.parquet` and `<metric>-stats.parquet`, plus
+`<metric>.parquet` when `--save-time-series` is set. Metrics without samples
+do not produce series or statistics files.
+
+Measurements, timestamps, and summary statistics are double-precision columns;
+sample counts are unsigned 64-bit integers. Labels, seed/configuration fields,
+and additional fields are UTF-8 strings, preserving their existing text values.
+The `--save-config`, `--additional-header`, `--additional-fields`, and
+`--output-path` options apply to both formats.
+
+With `--append`, Parquet export requires matching column names and types. It
+copies existing row groups and writes the new rows to a temporary file before
+replacing each output file, so appending takes time proportional to the existing
+file size. Without `--append`, output files are overwritten as with CSV.
+
 ### Development
 
 When modifying the code, it is recommend to compile in debug mode:

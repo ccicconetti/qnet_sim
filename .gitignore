@@ -24,6 +24,7 @@ conf*.json
 *.dot
 *.pdf
 *.csv
+*.parquet
 docs/.$diagrams.drawio.bkp
 .DS_Store
 .venv

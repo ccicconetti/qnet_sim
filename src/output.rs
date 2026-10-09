@@ -5,6 +5,9 @@ use std::io::Write;
 
 use crate::utils::CsvFriend;
 
+mod parquet;
+pub use parquet::save_outputs_parquet;
+
 #[derive(Debug, Clone, Default)]
 pub struct MetricMetadata {
     /// Unit of measurement.
@@ -435,19 +438,20 @@ struct Stats {
 }
 
 impl Stats {
+    fn for_series(series: &OutputSeriesSingle) -> std::collections::HashMap<u64, StatsSingle> {
+        let mut stats: std::collections::HashMap<u64, StatsSingle> = Default::default();
+        for (label_index, _timestamp, value) in &series.values {
+            let samples = stats.entry(*label_index).or_default();
+            samples.summary.add(value);
+            samples.percentiles.add(value);
+        }
+        stats
+    }
+
     fn new(output_series: &OutputSeries) -> Self {
         let mut stats: StatsContainer = std::collections::HashMap::new();
         for (metric, series) in &output_series.series {
-            stats.insert(metric.clone(), std::collections::HashMap::new());
-            for (label_index, _timestamp, value) in &series.values {
-                let stats_single = stats
-                    .get_mut(metric)
-                    .unwrap()
-                    .entry(*label_index)
-                    .or_default();
-                stats_single.summary.add(value);
-                stats_single.percentiles.add(value);
-            }
+            stats.insert(metric.clone(), Self::for_series(series));
         }
         Self { stats }
     }
