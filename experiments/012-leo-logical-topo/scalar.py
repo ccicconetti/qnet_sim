@@ -75,6 +75,7 @@ sns.lineplot(
     y="logical_topology_found",
     ax=ax,
     hue="hue",
+    errorbar=None,
 )
 # ax.xaxis.set_major_locator(MaxNLocator(nbins=10, integer=True))
 ax.grid(visible=False, axis="x", which="both")
