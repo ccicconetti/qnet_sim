@@ -30,11 +30,11 @@ if [ "$SEED_INIT" == "" ] ; then
     SEED_INIT=0
 fi
 if [ "$SEED_END" == "" ] ; then
-    SEED_END=200
+    SEED_END=1000
 fi
 
-memory_qubits_v="10 100"
-detectors_v="10 100"
+memory_qubits_v="10 20 30"
+detectors_v="10 20 30"
 
 #
 # Execute experiments
@@ -59,6 +59,7 @@ for DETECTORS in $detectors_v ; do
     envsubst < conf.json.template > conf.json
 
     cmd="$sim_exec --append \
+	--output-format parquet \
         --additional-fields $MEMORY_QUBITS,$DETECTORS,$snapshot \
         --additional-header num_qubits,detectors,snapshot \
         --seed-init $SEED_INIT --seed-end $SEED_END"
