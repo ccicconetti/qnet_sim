@@ -50,7 +50,7 @@ ax.set_xticks(
     )
 )
 ax.set_ylabel("Average path length (hops)")
-ax.set_xlabel("Time (s)")
+ax.set_xlabel("Snapshot")
 legend = ax.get_legend()
 if legend:
     legend.set_title(title="")
@@ -100,7 +100,7 @@ sns.lineplot(
 )
 ax.grid(visible=True)
 ax.set_ylabel("App throughput (messages/s)")
-ax.set_xlabel("Time (s)")
+ax.set_xlabel("Snapshot")
 legend = ax.get_legend()
 if legend:
     legend.set_title(title="#qubits-#apps")
