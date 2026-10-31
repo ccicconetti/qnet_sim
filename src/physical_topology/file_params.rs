@@ -279,6 +279,10 @@ mod tests {
         }
 
         let mut counts = std::collections::BTreeMap::new();
+        let mut count_matrix: std::collections::BTreeMap<
+            String,
+            std::collections::BTreeMap<String, i32>,
+        > = std::collections::BTreeMap::new();
         for alice in &ogs_labels_uniq {
             for bob in &ogs_labels_uniq {
                 if alice == bob {
@@ -291,11 +295,55 @@ mod tests {
                     }
                 }
                 counts.insert(count, format!("{} {}", alice, bob));
+                if let Some(bob_matrix) = count_matrix.get_mut(alice) {
+                    bob_matrix.insert(bob.clone(), count);
+                } else {
+                    count_matrix.insert(alice.clone(), {
+                        let mut bob_matrix = std::collections::BTreeMap::new();
+                        bob_matrix.insert(bob.clone(), count);
+                        bob_matrix
+                    });
+                }
             }
         }
 
         for (count, pair) in counts {
             println!("{}/{}: {}", count, ogs_labels.len(), pair);
+        }
+
+        //
+        // LaTeX table
+        //
+        let mut names = std::collections::BTreeMap::new();
+        for (i, alice) in ogs_labels_uniq.iter().enumerate() {
+            names.insert(alice.clone(), i + 1);
+        }
+
+        println!("{:?}", names);
+
+        for alice in &ogs_labels_uniq {
+            print!("{} & ", names.get(alice).unwrap());
+        }
+        println!("\\\\");
+
+        for (i, alice) in ogs_labels_uniq.iter().enumerate() {
+            print!(" {} & ", names.get(alice).unwrap());
+            for (j, bob) in ogs_labels_uniq.iter().enumerate() {
+                if i <= j {
+                    print!(" ");
+                } else {
+                    let count = count_matrix
+                        .get(alice)
+                        .and_then(|bob_matrix| bob_matrix.get(bob))
+                        .cloned()
+                        .unwrap_or(0);
+                    print!(" {:.0}", (count as f64 / ogs_labels.len() as f64) * 100.0);
+                }
+                if j < ogs_labels_uniq.len() - 1 {
+                    print!(" &");
+                }
+            }
+            println!(" \\\\");
         }
 
         Ok(())
