@@ -22,6 +22,8 @@ df["logical_topology_rel_size"] = (
     df["logical_topology_num_edges"] / df["logical_topology_possible_edges"]
 )
 
+print("total execution time (s): {}".format(df["execution_time"].sum()))
+
 metrics = {
     "bsm_prob": "BSM probability",
     "bsm_tot": "ES operations",
